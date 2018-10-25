@@ -38,8 +38,21 @@ function resetEnemy()
     return enemy
 end
 
+TOWER_WAITING = 0
+TOWER_ATTACKING = 1
 function newTower(x, y)
     map[x][y] = MAP_TOWER
+    towers[numTowers] = {
+        x = (x + 0.5) * blockSize,
+        y = (y + 0.5) * blockSize,
+        state = TOWER_WAITING,
+        timeRemaining = 1,
+        attackTime = 1,
+        waitTime = 1,
+        range = blockSize * 2.5,
+        enemyId = -1
+    }
+    numTowers = numTowers + 1
 end
 
 function reset()
@@ -48,6 +61,7 @@ function reset()
     depth = -1
     enemies = {}
     towers = {}
+    numTowers = 0
     money = 10
     for i=0, numEnemies do
         enemies[i] = resetEnemy(enemy)
@@ -158,6 +172,7 @@ function love.draw()
     love.graphics.translate(0, textHeight)
     love.graphics.setColor(1, 0, 0, 1)
 
+    love.graphics.setLineWidth(1)
     for x = 0, numBlocks, 1
     do
         love.graphics.line(x * blockSize, 0, x * blockSize, screenSize)
@@ -168,6 +183,7 @@ function love.draw()
         love.graphics.line(0, y * blockSize, screenSize, y * blockSize)
     end
 
+    -- path
     love.graphics.setColor(1, 0, 1, 1)
     for x=0, numBlocks-1 do
         for y=0, numBlocks - 1 do
@@ -177,6 +193,20 @@ function love.draw()
         end
     end
 
+    -- bullets
+    love.graphics.setColor(1, 0, 0, 1)
+    love.graphics.setLineWidth(4)
+    for i=0, numTowers - 1 do
+        local tower = towers[i]
+        if tower.enemyId > -1 then
+            enemy = enemies[tower.enemyId]
+            if enemy.active then
+                love.graphics.line(tower.x, tower.y, enemy.x, enemy.y)
+            end
+        end
+    end
+
+    -- towers
     love.graphics.setColor(0, 0, 1, 1)
     for x=0, numBlocks-1 do
         for y=0, numBlocks - 1 do
@@ -186,9 +216,10 @@ function love.draw()
         end
     end
 
+    -- enemies
     love.graphics.setColor(1, 1, 1, 1)
     for i=0, numEnemies do
-        enemy = enemies[i]
+        local enemy = enemies[i]
         if enemy.active then
             love.graphics.circle("fill", enemy.x, enemy.y, 10)
         end
@@ -233,9 +264,58 @@ function love.update(dt)
             end
         end
     end
+
+    for i=0, numTowers - 1 do
+        updateTower(dt, towers[i])
+    end
 end
 
 
+function updateTower(dt, tower)
+    tower.timeRemaining = tower.timeRemaining - dt
+
+    if tower.state == TOWER_WAITING then
+        if tower.timeRemaining < 0 then
+            towerLockOnToEnemy(tower)
+            if tower.enemyId > -1 then
+                tower.state = TOWER_ATTACKING
+                tower.timeRemaining = tower.attackTime
+            end
+        end
+    elseif tower.state == TOWER_ATTACKING then
+
+
+        if tower.timeRemaining < 0 then
+            tower.state = TOWER_WAITING
+            tower.timeRemaining = tower.waitTime
+            tower.enemyId = -1
+        end
+    end
+end
+
+function towerLockOnToEnemy(tower)
+    local minDistance = 10000000000
+    for i=0, numEnemies do
+        local enemy = enemies[i]
+        local distance = math.sqrt(math.pow(enemy.x - tower.x, 2) + math.pow(enemy.y - tower.y, 2))
+
+        if distance < minDistance then
+            minDistance = distance
+        end
+    end
+
+    if minDistance < tower.range then
+        for i=0, numEnemies do
+            local enemy = enemies[i]
+            local distance = math.sqrt(math.pow(enemy.x - tower.x, 2) + math.pow(enemy.y - tower.y, 2))
+            
+            if math.abs(distance - minDistance) < 0.001 then
+                tower.enemyId = i
+                return
+            end
+        end
+    end
+end
 
 
 function updateScore(amount)
