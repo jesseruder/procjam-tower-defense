@@ -1,6 +1,9 @@
 MAP_BLANK=0
 MAP_PATH=1
 MAP_TOWER=2
+MAP_TREE=3
+
+BLANK_PERCENTAGE=0.5
 
 TOWER_PRICE=100
 
@@ -109,6 +112,47 @@ function reset(newGame)
             end
         end
     end
+
+    -- fill in trees
+    local mapCopy = {}
+    for x=0, numBlocks-1 do
+        mapCopy[x] = {}
+        for y=0, numBlocks - 1 do
+            mapCopy[x][y] = 0
+            if map[x][y] == MAP_PATH then
+                mapCopy[x][y] = 1
+            end
+        end
+    end
+
+    blurMap(mapCopy, 1)
+    blurMap(mapCopy, 2)
+
+    for x=0, numBlocks-1 do
+        for y=0, numBlocks - 1 do
+            if mapCopy[x][y] == 0 then
+                if map[x][y] == MAP_BLANK then
+                    map[x][y] = MAP_TREE
+                end
+            end
+        end
+    end
+end
+
+function blurMap(mapCopy, startingNumber)
+    for x=0, numBlocks-1 do
+        for y=0, numBlocks - 1 do
+            if mapCopy[x][y] == startingNumber then
+                for xx=x-1, x+1 do
+                    for yy=y-1, y+1 do
+                        if xx >= 0 and yy >= 0 and xx < numBlocks and yy < numBlocks then
+                            mapCopy[xx][yy] = startingNumber + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 function newLevel()
@@ -116,8 +160,12 @@ function newLevel()
     for x=0, numBlocks-1 do
         map[x] = {}
         for y=0, numBlocks - 1 do
-            map[x][y] = MAP_BLANK
+            map[x][y] = MAP_TREE
         end
+    end
+
+    for i=0, numBlocks*numBlocks*BLANK_PERCENTAGE do
+        map[math.floor(math.random() * numBlocks)][math.floor(math.random() * numBlocks)] = MAP_BLANK
     end
 
     map[0][numBlocks / 2] = MAP_PATH
@@ -208,6 +256,16 @@ function love.draw()
     for x=0, numBlocks-1 do
         for y=0, numBlocks - 1 do
             if map[x][y] == MAP_PATH then
+                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
+            end
+        end
+    end
+
+    -- tree
+    love.graphics.setColor(34/256, 139/256, 34/256, 1)
+    for x=0, numBlocks-1 do
+        for y=0, numBlocks - 1 do
+            if map[x][y] == MAP_TREE then
                 love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
             end
         end
