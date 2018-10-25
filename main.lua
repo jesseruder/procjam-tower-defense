@@ -22,13 +22,18 @@ function reset()
     enemies = {}
     for i=0, numEnemies do
         enemies[i] = {
-            x = 0,
-            y = 0,
+            x = -0.5,
+            y = (math.floor(numBlocks / 2) + 0.5) * blockSize,
             startTime = math.random() * 5,
             dx = 1,
             dy = 0,
+            newDirectionDecided = false,
+            speed = 30,
             visited = {}
         }
+        for j=0, numBlocks do
+            enemies[i].visited[j] = {}
+        end
     end
 
     for i=0, 3 do
@@ -166,7 +171,82 @@ function love.update(dt)
         if enemy.startTime > 0 then
             enemy.startTime = enemy.startTime - dt
         else
+            enemy.x = enemy.x + enemy.dx * dt * enemy.speed
+            enemy.y = enemy.y + enemy.dy * dt * enemy.speed
 
+            currentBlockX = math.floor(enemy.x * numBlocks / screenSize)
+            currentBlockY = math.floor(enemy.y * numBlocks / screenSize)
+
+            if currentBlockX >= 0 and currentBlockX < numBlocks then
+                enemy.visited[currentBlockX][currentBlockY] = true
+            end
+
+            choosingNewDirection = false
+            if enemy.dx > 0 then
+                if enemy.x - (currentBlockX * blockSize) > blockSize * 0.5 then
+                    if not enemy.newDirectionDecided then
+                        choosingNewDirection = true
+                    end
+                else
+                    enemy.newDirectionDecided = false
+                end
+            end
+
+            if enemy.dx < 0 then
+                if enemy.x - (currentBlockX * blockSize) < blockSize * 0.5 then
+                    if not enemy.newDirectionDecided then
+                        choosingNewDirection = true
+                    end
+                else
+                    enemy.newDirectionDecided = false
+                end
+            end
+
+            if enemy.dy > 0 then
+                if enemy.y - (currentBlockY * blockSize) > blockSize * 0.5 then
+                    if not enemy.newDirectionDecided then
+                        choosingNewDirection = true
+                    end
+                else
+                    enemy.newDirectionDecided = false
+                end
+            end
+
+            if enemy.dy < 0 then
+                if enemy.y - (currentBlockY * blockSize) < blockSize * 0.5 then
+                    if not enemy.newDirectionDecided then
+                        choosingNewDirection = true
+                    end
+                else
+                    enemy.newDirectionDecided = false
+                end
+            end
+
+            if choosingNewDirection then
+                enemy.newDirectionDecided = true
+
+                for i=0, 10 do
+                    dir = math.random()
+                    enemy.dx = 0
+                    enemy.dy = 0
+                    if dir < 0.1 then
+                        enemy.dx = -1
+                    elseif dir < 0.4 then
+                        enemy.dy = -1
+                    elseif dir < 0.7 then
+                        enemy.dx = 1
+                    else
+                        enemy.dy = 1
+                    end
+
+                    nextBlockX = currentBlockX + enemy.dx
+                    nextBlockY = currentBlockY + enemy.dy
+
+                    if nextBlockX >= 0 and nextBlockY >= 0 and nextBlockX < numBlocks and nextBlockY < numBlocks and map[nextBlockX][nextBlockY] == MAP_PATH and not enemy.visited[nextBlockX][nextBlockY] then
+                        break
+                    end 
+                end
+            end
         end
     end
 end
