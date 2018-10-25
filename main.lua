@@ -2,6 +2,11 @@ MAP_BLANK=0
 MAP_PATH=1
 MAP_TOWER=2
 
+TOWER_PRICE=100
+
+GAME_STATE_WAITING_TO_START=0
+GAME_STATE_RUNNING=1
+
 function love.load()
     local width, height, flags = love.window.getMode()
     textHeight = 40
@@ -12,6 +17,7 @@ function love.load()
     blockSize = screenSize / numBlocks
     lineSize = 3
     numEnemies = 10
+    gameState = GAME_STATE_WAITING_TO_START
 
     math.randomseed(os.time())
     reset()
@@ -23,10 +29,13 @@ function resetEnemy()
         y = (math.floor(numBlocks / 2) + 0.5) * blockSize,
         dx = 1,
         dy = 0,
+        health = 30,
         newDirectionDecided = false,
         lastBlock = false,
         speed = 50,
         active = false,
+        scoreKill = 20,
+        scoreLose = -50,
         visited = {}
     }
     for j=0, numBlocks do
@@ -46,6 +55,7 @@ function newTower(x, y)
         x = (x + 0.5) * blockSize,
         y = (y + 0.5) * blockSize,
         state = TOWER_WAITING,
+        damage = 10,
         timeRemaining = 1,
         attackTime = 1,
         waitTime = 1,
@@ -62,7 +72,7 @@ function reset()
     enemies = {}
     towers = {}
     numTowers = 0
-    money = 10
+    money = 300
     for i=0, numEnemies do
         enemies[i] = resetEnemy(enemy)
     end
@@ -165,6 +175,7 @@ function drawPath(x, y, lastDx, lastDy, depth)
 end
 
 function love.draw()
+    love.graphics.push()
     love.graphics.clear(0.7, 0.7, 0.7, 1)
     love.graphics.setColor(0, 0, 0, 1)
     love.graphics.print("$" .. money, screenSize - 100, 10)
@@ -196,12 +207,14 @@ function love.draw()
     -- bullets
     love.graphics.setColor(1, 0, 0, 1)
     love.graphics.setLineWidth(4)
-    for i=0, numTowers - 1 do
-        local tower = towers[i]
-        if tower.enemyId > -1 then
-            enemy = enemies[tower.enemyId]
-            if enemy.active then
-                love.graphics.line(tower.x, tower.y, enemy.x, enemy.y)
+    if gameState == GAME_STATE_RUNNING then
+        for i=0, numTowers - 1 do
+            local tower = towers[i]
+            if tower.enemyId > -1 then
+                enemy = enemies[tower.enemyId]
+                if enemy.active then
+                    love.graphics.line(tower.x, tower.y, enemy.x, enemy.y)
+                end
             end
         end
     end
@@ -218,16 +231,32 @@ function love.draw()
 
     -- enemies
     love.graphics.setColor(1, 1, 1, 1)
-    for i=0, numEnemies do
-        local enemy = enemies[i]
-        if enemy.active then
-            love.graphics.circle("fill", enemy.x, enemy.y, 10)
+    if gameState == GAME_STATE_RUNNING then
+        for i=0, numEnemies do
+            local enemy = enemies[i]
+            if enemy.active then
+                love.graphics.circle("fill", enemy.x, enemy.y, 10)
+            end
         end
+    end
+
+    love.graphics.pop()
+    -- overlay
+    if gameState == GAME_STATE_WAITING_TO_START then
+        love.graphics.setColor(1, 1, 1, 0.7)
+        love.graphics.rectangle("fill", 0, 0, screenSize + 1, screenSize + textHeight)
     end
 end
 
 function love.mousepressed(x, y, button, istouch)
     if button ~= 1 then
+        return
+    end
+
+    if gameState == GAME_STATE_WAITING_TO_START then
+        gameState = GAME_STATE_RUNNING
+        return
+    elseif gameState ~= GAME_STATE_RUNNING then
         return
     end
     
@@ -239,7 +268,10 @@ function love.mousepressed(x, y, button, istouch)
     end
 
     if map[blockX][blockY] == MAP_BLANK then
-        newTower(blockX, blockY)
+        if money >= TOWER_PRICE then
+            money = money - TOWER_PRICE
+            newTower(blockX, blockY)
+        end
     end
 end
 
@@ -252,6 +284,10 @@ function love.keyreleased(key, scancode)
 end
 
 function love.update(dt)
+    if gameState ~= GAME_STATE_RUNNING then
+        return
+    end
+
     for i=0, numEnemies do
         enemy = enemies[i]
         if enemy.active then
@@ -283,9 +319,26 @@ function updateTower(dt, tower)
             end
         end
     elseif tower.state == TOWER_ATTACKING then
+        local enemy = enemies[tower.enemyId]
+        if enemy.active then
+            enemy.health = enemy.health - dt * tower.damage
 
+            local distance = math.sqrt(math.pow(enemy.x - tower.x, 2) + math.pow(enemy.y - tower.y, 2))
+            if distance > tower.range then
+                tower.timeRemaining = -1
+            end
 
-        if tower.timeRemaining < 0 then
+            if enemy.health < 0 then
+                enemy.active = false
+                updateScore(enemy.scoreKill)
+            end
+
+            if tower.timeRemaining < 0 or not enemy.active then
+                tower.state = TOWER_WAITING
+                tower.timeRemaining = tower.waitTime
+                tower.enemyId = -1
+            end
+        else
             tower.state = TOWER_WAITING
             tower.timeRemaining = tower.waitTime
             tower.enemyId = -1
@@ -297,21 +350,25 @@ function towerLockOnToEnemy(tower)
     local minDistance = 10000000000
     for i=0, numEnemies do
         local enemy = enemies[i]
-        local distance = math.sqrt(math.pow(enemy.x - tower.x, 2) + math.pow(enemy.y - tower.y, 2))
+        if enemy.active then
+            local distance = math.sqrt(math.pow(enemy.x - tower.x, 2) + math.pow(enemy.y - tower.y, 2))
 
-        if distance < minDistance then
-            minDistance = distance
+            if distance < minDistance then
+                minDistance = distance
+            end
         end
     end
 
     if minDistance < tower.range then
         for i=0, numEnemies do
             local enemy = enemies[i]
-            local distance = math.sqrt(math.pow(enemy.x - tower.x, 2) + math.pow(enemy.y - tower.y, 2))
-            
-            if math.abs(distance - minDistance) < 0.001 then
-                tower.enemyId = i
-                return
+            if enemy.active then
+                local distance = math.sqrt(math.pow(enemy.x - tower.x, 2) + math.pow(enemy.y - tower.y, 2))
+                
+                if math.abs(distance - minDistance) < 0.001 then
+                    tower.enemyId = i
+                    return
+                end
             end
         end
     end
@@ -330,7 +387,7 @@ function enemyMove(dt, enemy)
 
     if enemy.x > screenSize then
         enemy.active = false
-        updateScore(-50)
+        updateScore(enemy.scoreLose)
     end
 
     currentBlockX = math.floor(enemy.x * numBlocks / screenSize)
