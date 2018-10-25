@@ -6,6 +6,10 @@ TOWER_PRICE=100
 
 GAME_STATE_WAITING_TO_START=0
 GAME_STATE_RUNNING=1
+GAME_STATE_BETWEEN_ROUNDS=2
+GAME_STATE_END=3
+
+MIN_MONEY_TO_CONTINUE = 100
 
 function love.load()
     local width, height, flags = love.window.getMode()
@@ -16,11 +20,11 @@ function love.load()
     numBlocks = 10
     blockSize = screenSize / numBlocks
     lineSize = 3
-    numEnemies = 10
+    numEnemies = 20
     gameState = GAME_STATE_WAITING_TO_START
 
     math.randomseed(os.time())
-    reset()
+    reset(true)
 end
 
 function resetEnemy()
@@ -29,13 +33,14 @@ function resetEnemy()
         y = (math.floor(numBlocks / 2) + 0.5) * blockSize,
         dx = 1,
         dy = 0,
-        health = 30,
+        health = 20,
         newDirectionDecided = false,
         lastBlock = false,
-        speed = 50,
+        speed = 60,
         active = false,
         scoreKill = 20,
         scoreLose = -50,
+        spawnRate = 0.05,
         visited = {}
     }
     for j=0, numBlocks do
@@ -65,14 +70,17 @@ function newTower(x, y)
     numTowers = numTowers + 1
 end
 
-function reset()
+function reset(newGame)
+    if newGame then
+        money = 300
+    end
     lastX = -1
     lastY = -1
     depth = -1
     enemies = {}
     towers = {}
     numTowers = 0
-    money = 300
+    time = 60
     for i=0, numEnemies do
         enemies[i] = resetEnemy(enemy)
     end
@@ -178,6 +186,7 @@ function love.draw()
     love.graphics.push()
     love.graphics.clear(0.7, 0.7, 0.7, 1)
     love.graphics.setColor(0, 0, 0, 1)
+    love.graphics.print("Time: " .. math.floor(time + 0.5), 20, 10)
     love.graphics.print("$" .. money, screenSize - 100, 10)
 
     love.graphics.translate(0, textHeight)
@@ -204,6 +213,16 @@ function love.draw()
         end
     end
 
+    -- towers
+    love.graphics.setColor(0, 0, 1, 1)
+    for x=0, numBlocks-1 do
+        for y=0, numBlocks - 1 do
+            if map[x][y] == MAP_TOWER then
+                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
+            end
+        end
+    end
+
     -- bullets
     love.graphics.setColor(1, 0, 0, 1)
     love.graphics.setLineWidth(4)
@@ -215,16 +234,6 @@ function love.draw()
                 if enemy.active then
                     love.graphics.line(tower.x, tower.y, enemy.x, enemy.y)
                 end
-            end
-        end
-    end
-
-    -- towers
-    love.graphics.setColor(0, 0, 1, 1)
-    for x=0, numBlocks-1 do
-        for y=0, numBlocks - 1 do
-            if map[x][y] == MAP_TOWER then
-                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
             end
         end
     end
@@ -242,7 +251,7 @@ function love.draw()
 
     love.graphics.pop()
     -- overlay
-    if gameState == GAME_STATE_WAITING_TO_START then
+    if gameState ~= GAME_STATE_RUNNING then
         love.graphics.setColor(1, 1, 1, 0.7)
         love.graphics.rectangle("fill", 0, 0, screenSize + 1, screenSize + textHeight)
     end
@@ -254,6 +263,14 @@ function love.mousepressed(x, y, button, istouch)
     end
 
     if gameState == GAME_STATE_WAITING_TO_START then
+        gameState = GAME_STATE_RUNNING
+        return
+    elseif gameState == GAME_STATE_BETWEEN_ROUNDS then
+        reset(false)
+        gameState = GAME_STATE_RUNNING
+        return
+    elseif gameState == GAME_STATE_END then
+        reset(true)
         gameState = GAME_STATE_RUNNING
         return
     elseif gameState ~= GAME_STATE_RUNNING then
@@ -288,12 +305,22 @@ function love.update(dt)
         return
     end
 
+    time = time - dt
+    if time <= 0 then
+        time = 0
+        if money >= MIN_MONEY_TO_CONTINUE then
+            gameState = GAME_STATE_BETWEEN_ROUNDS
+        else
+            gameState = GAME_STATE_END
+        end
+    end
+
     for i=0, numEnemies do
         enemy = enemies[i]
         if enemy.active then
             enemyMove(dt, enemy)
         else
-            if math.random() * 20 < dt then
+            if math.random() < dt * enemy.spawnRate then
                 enemies[i] = resetEnemy()
                 enemy = enemies[i]
                 enemy.active = 0
