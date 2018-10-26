@@ -12,11 +12,15 @@ UPGRADE_RANGE_PRICE=100
 UPGRADE_POWER="power"
 UPGRADE_POWER_PRICE=200
 
-BLANK_PERCENTAGE=0.5
+UPGRADE_RANGE_MULTIPIER=2
+UPGRADE_POWER_MULTIPLIER=1.7
+BLOCK_STATUS_DURATION=10
+
+BLANK_PERCENTAGE=0.25
 
 TOWER_PRICE=100
 CLEAR_TREE_PRICE=50
-BLOCK_PATH_PRICE=150
+BLOCK_PATH_PRICE=300
 
 GAME_STATE_WAITING_TO_START=0
 GAME_STATE_RUNNING=1
@@ -33,6 +37,10 @@ PURCHASE_MENU_ROW_HEIGHT = 30
 PURCHASE_MENU_WIDTH = 170
 PURCHASE_MENU_FONT_SIZE = 12
 PURCHASE_MENU_CANCEL_DIST = 200
+
+ENEMY_TYPE_DUMB="dumb"
+ENEMY_TYPE_PATHFINDER="pathfinder"
+ENEMY_TYPE_FLY="fly"
 
 function love.load()
     local width, height, flags = love.window.getMode()
@@ -54,6 +62,7 @@ end
 
 function resetEnemy()
     enemy = {
+        type = ENEMY_TYPE_DUMB,
         x = -0.5,
         y = (math.floor(numBlocks / 2) + 0.5) * blockSize,
         dx = 1,
@@ -69,6 +78,24 @@ function resetEnemy()
         spawnRate = 0.05,
         visited = {}
     }
+
+    if money > 300 and math.random() < 0.2 then
+        enemy.type = ENEMY_TYPE_PATHFINDER
+        enemy.speed = 100
+        enemy.health = 7
+        enemy.maxHealth = 7
+    end
+
+    if money > 500 and math.random() < 0.1 then
+        enemy.type = ENEMY_TYPE_FLY
+        enemy.speed = 20
+        enemy.health = 40
+        enemy.maxHealth = 40
+        enemy.scoreKill = 50
+    end
+
+    enemy.speed = enemy.speed + math.random() * 8
+
     for j=0, numBlocks do
         enemy.visited[j] = {}
         for k=0, numBlocks do
@@ -148,6 +175,9 @@ function reset(newGame)
             end
         end
     end
+
+    -- preprocess shortest path
+    preprocessMap(lastX, lastY, 0)
 
     -- fill in trees
     local mapCopy = {}
@@ -344,7 +374,14 @@ function love.draw()
         for i=0, numEnemies do
             local enemy = enemies[i]
             if enemy.active then
-                love.graphics.setColor(0.7, 0.7, 1, 1)
+                if enemy.type == ENEMY_TYPE_DUMB then
+                    love.graphics.setColor(0.7, 0.7, 1, 1)
+                elseif enemy.type == ENEMY_TYPE_PATHFINDER then
+                    love.graphics.setColor(0.9, 0.9, 0, 1)
+                elseif enemy.type == ENEMY_TYPE_FLY then
+                    love.graphics.setColor(0, 0, 0, 1)
+                end
+
                 love.graphics.circle("fill", enemy.x, enemy.y, 10)
 
                 if enemy.health < enemy.maxHealth then
@@ -507,13 +544,11 @@ function love.mousepressed(x, y, button, istouch)
                 price = BLOCK_PATH_PRICE,
                 action = function (x, y)
                     map[x][y] = MAP_BLOCKED_PATH
-                    mapMetadata[x][y] = {
-                        status = STATUS_BLOCKED,
-                        timeRemaining = 10,
-                        flashTimeRemaining = 0.1,
-                        flashTime = 0.1,
-                        flashOn = true
-                    }
+                    mapMetadata[x][y].status = STATUS_BLOCKED
+                    mapMetadata[x][y].timeRemaining = BLOCK_STATUS_DURATION
+                    mapMetadata[x][y].flashTimeRemaining = 0.1
+                    mapMetadata[x][y].flashTime = 0.1
+                    mapMetadata[x][y].flashOn = true
                 end
             }
         }
@@ -539,7 +574,7 @@ function love.mousepressed(x, y, button, istouch)
                 price = UPGRADE_RANGE_PRICE,
                 action = function (x, y)
                     mapMetadata[x][y][UPGRADE_RANGE] = true
-                    mapMetadata[x][y].tower.range = mapMetadata[x][y].tower.range * 2
+                    mapMetadata[x][y].tower.range = mapMetadata[x][y].tower.range * UPGRADE_RANGE_MULTIPIER
                 end
             }
         end
@@ -551,7 +586,7 @@ function love.mousepressed(x, y, button, istouch)
                 price = UPGRADE_POWER_PRICE,
                 action = function (x, y)
                     mapMetadata[x][y][UPGRADE_POWER] = true
-                    mapMetadata[x][y].tower.damage = mapMetadata[x][y].tower.damage * 3
+                    mapMetadata[x][y].tower.damage = mapMetadata[x][y].tower.damage * UPGRADE_POWER_MULTIPLIER
                 end
             }
         end
@@ -600,7 +635,13 @@ function love.update(dt)
     for i=0, numEnemies do
         enemy = enemies[i]
         if enemy.active then
-            enemyMove(dt, enemy)
+            if enemy.type == ENEMY_TYPE_DUMB then
+                enemyMove(dt, enemy)
+            elseif enemy.type == ENEMY_TYPE_PATHFINDER then
+                enemyMovePathfinder(dt, enemy)
+            elseif enemy.type == ENEMY_TYPE_FLY then
+                enemyMoveFly(dt, enemy)
+            end
         else
             if math.random() < dt * enemy.spawnRate then
                 enemies[i] = resetEnemy()
@@ -620,7 +661,7 @@ function love.update(dt)
             if m and m.status == STATUS_BLOCKED then
                 m.timeRemaining = m.timeRemaining - dt
                 if m.timeRemaining < 0 then
-                    mapMetadata[x][y] = {}
+                    mapMetadata[x][y].status = nil
                     map[x][y] = MAP_PATH
                 else
                     m.flashTimeRemaining = m.flashTimeRemaining - dt
@@ -850,5 +891,157 @@ function enemyMove(dt, enemy)
                 return
             end
         end
+    end
+end
+
+-- smart pathfinding
+function enemyMovePathfinder(dt, enemy)
+    enemy.x = enemy.x + enemy.dx * dt * enemy.speed
+    enemy.y = enemy.y + enemy.dy * dt * enemy.speed
+
+    if enemy.x > screenSize then
+        enemy.active = false
+        updateScore(enemy.scoreLose)
+    end
+
+    currentBlockX = math.floor(enemy.x * numBlocks / screenSize)
+    currentBlockY = math.floor(enemy.y * numBlocks / screenSize)
+
+    choosingNewDirection = false
+    if enemy.dx > 0 then
+        if enemy.x - (currentBlockX * blockSize) > blockSize * 0.5 then
+            if not enemy.newDirectionDecided then
+                choosingNewDirection = true
+            end
+        else
+            enemy.newDirectionDecided = false
+        end
+    end
+
+    if enemy.dx < 0 then
+        if enemy.x - (currentBlockX * blockSize) < blockSize * 0.5 then
+            if not enemy.newDirectionDecided then
+                choosingNewDirection = true
+            end
+        else
+            enemy.newDirectionDecided = false
+        end
+    end
+
+    if enemy.dy > 0 then
+        if enemy.y - (currentBlockY * blockSize) > blockSize * 0.5 then
+            if not enemy.newDirectionDecided then
+                choosingNewDirection = true
+            end
+        else
+            enemy.newDirectionDecided = false
+        end
+    end
+
+    if enemy.dy < 0 then
+        if enemy.y - (currentBlockY * blockSize) < blockSize * 0.5 then
+            if not enemy.newDirectionDecided then
+                choosingNewDirection = true
+            end
+        else
+            enemy.newDirectionDecided = false
+        end
+    end
+
+    if choosingNewDirection then
+        enemy.newDirectionDecided = true
+
+        if lastX == currentBlockX and lastY == currentBlockY then
+            enemy.dx = 1
+            enemy.dy = 0
+            return
+        end
+
+        enemy.dx = 0
+        enemy.dy = 0
+        local distance = 1000000
+        local up = getDistance(currentBlockX, currentBlockY - 1)
+        local right = getDistance(currentBlockX + 1, currentBlockY)
+        local down = getDistance(currentBlockX, currentBlockY + 1)
+        local left = getDistance(currentBlockX - 1, currentBlockY)
+
+        if up < distance then
+            distance = up
+            enemy.dx = 0
+            enemy.dy = -1
+        end
+
+        if right < distance then
+            distance = right
+            enemy.dx = 1
+            enemy.dy = 0
+        end
+        
+        if down < distance then
+            distance = down
+            enemy.dx = 0
+            enemy.dy = 1
+        end
+        
+        if left < distance then
+            distance = left
+            enemy.dx = -1
+            enemy.dy = 0
+        end
+    end
+end
+
+function getDistance(x, y)
+    if x < 0 or y < 0 or x >= numBlocks or y >= numBlocks then
+        return 10000000
+    end
+
+    if map[x][y] ~= MAP_PATH then
+        return 10000
+    end
+
+    if mapMetadata[x][y].distanceFromEnd then
+        return mapMetadata[x][y].distanceFromEnd
+    end
+
+    return 1000000
+end
+
+-- preprocess distances in map
+function preprocessMap(x, y, distance)
+    if x < 0 or y < 0 or x >= numBlocks or y >= numBlocks then
+        return
+    end
+
+    if map[x][y] ~= MAP_PATH then
+        return
+    end
+
+    if mapMetadata[x][y].distanceFromEnd and mapMetadata[x][y].distanceFromEnd < distance then
+        return
+    end
+
+    mapMetadata[x][y].distanceFromEnd = distance
+    preprocessMap(x, y - 1, distance + 1)
+    preprocessMap(x + 1, y, distance + 1)
+    preprocessMap(x, y + 1, distance + 1)
+    preprocessMap(x - 1, y, distance + 1)
+end
+
+-- fly
+function enemyMoveFly(dt, enemy)
+    enemy.dx = (lastX + 1) * blockSize - enemy.x
+    enemy.dy = (lastY + 0.5) * blockSize - enemy.y
+
+    local speed = math.sqrt(math.pow(enemy.dx, 2) + math.pow(enemy.dy, 2))
+    enemy.dx = enemy.dx / speed
+    enemy.dy = enemy.dy / speed
+
+    enemy.x = enemy.x + enemy.dx * dt * enemy.speed
+    enemy.y = enemy.y + enemy.dy * dt * enemy.speed
+
+    if enemy.x > screenSize then
+        enemy.active = false
+        updateScore(enemy.scoreLose)
     end
 end
