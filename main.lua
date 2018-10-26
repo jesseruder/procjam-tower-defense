@@ -14,6 +14,10 @@ GAME_STATE_END=3
 
 MIN_MONEY_TO_CONTINUE = 100
 
+HEALTH_BAR_WIDTH = 20
+HEALTH_BAR_HEIGHT = 5
+HEALTH_BAR_Y = -20
+
 function love.load()
     local width, height, flags = love.window.getMode()
     textHeight = 40
@@ -38,6 +42,7 @@ function resetEnemy()
         dx = 1,
         dy = 0,
         health = 20,
+        maxHealth = 20,
         newDirectionDecided = false,
         lastBlock = false,
         speed = 60,
@@ -308,7 +313,19 @@ function love.draw()
         for i=0, numEnemies do
             local enemy = enemies[i]
             if enemy.active then
+                love.graphics.setColor(0.7, 0.7, 1, 1)
                 love.graphics.circle("fill", enemy.x, enemy.y, 10)
+
+                if enemy.health < enemy.maxHealth then
+                    local healthPercent = enemy.health / enemy.maxHealth
+                    love.graphics.setColor(0.2, 0.2, 0.2, 1)
+                    love.graphics.setLineWidth(2)
+                    love.graphics.rectangle("line", enemy.x - HEALTH_BAR_WIDTH / 2.0, enemy.y + HEALTH_BAR_Y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT)
+                    love.graphics.setColor(1, 1, 1, 1)
+                    love.graphics.rectangle("fill", enemy.x - HEALTH_BAR_WIDTH / 2.0, enemy.y + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * healthPercent, HEALTH_BAR_HEIGHT)
+                    love.graphics.setColor(1, 0, 0, 1)
+                    love.graphics.rectangle("fill", enemy.x - HEALTH_BAR_WIDTH / 2.0 + HEALTH_BAR_WIDTH * healthPercent, enemy.y + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * (1.0 - healthPercent), HEALTH_BAR_HEIGHT)
+                end
             end
         end
     end
