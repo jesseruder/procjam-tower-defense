@@ -2,10 +2,21 @@ MAP_BLANK=0
 MAP_PATH=1
 MAP_TOWER=2
 MAP_TREE=3
+MAP_BLOCKED_PATH=4
+
+STATUS_BLOCKED="blocked"
+UPGRADE_SPEED="speed"
+UPGRADE_SPEED_PRICE=50
+UPGRADE_RANGE="range"
+UPGRADE_RANGE_PRICE=100
+UPGRADE_POWER="power"
+UPGRADE_POWER_PRICE=200
 
 BLANK_PERCENTAGE=0.5
 
 TOWER_PRICE=100
+CLEAR_TREE_PRICE=50
+BLOCK_PATH_PRICE=150
 
 GAME_STATE_WAITING_TO_START=0
 GAME_STATE_RUNNING=1
@@ -17,6 +28,11 @@ MIN_MONEY_TO_CONTINUE = 100
 HEALTH_BAR_WIDTH = 20
 HEALTH_BAR_HEIGHT = 5
 HEALTH_BAR_Y = -20
+
+PURCHASE_MENU_ROW_HEIGHT = 30
+PURCHASE_MENU_WIDTH = 170
+PURCHASE_MENU_FONT_SIZE = 12
+PURCHASE_MENU_CANCEL_DIST = 200
 
 function love.load()
     local width, height, flags = love.window.getMode()
@@ -30,6 +46,7 @@ function love.load()
     numEnemies = 20
     gameState = GAME_STATE_WAITING_TO_START
     font = love.graphics.newFont(14)
+    menuFont = love.graphics.newFont(12)
 
     math.randomseed(os.time())
     reset(true)
@@ -76,6 +93,7 @@ function newTower(x, y)
         range = blockSize * 2.5,
         enemyId = -1
     }
+    mapMetadata[x][y].tower = towers[numTowers]
     numTowers = numTowers + 1
 end
 
@@ -86,6 +104,7 @@ function reset(newGame)
     else
         levels = levels + 1
     end
+    purchaseMenu = nil
     lastX = -1
     lastY = -1
     depth = -1
@@ -97,6 +116,14 @@ function reset(newGame)
         enemies[i] = resetEnemy(enemy)
     end
     enemies[0].active = true
+
+    mapMetadata = {}
+    for x=0, numBlocks-1 do
+        mapMetadata[x] = {}
+        for y=0, numBlocks - 1 do
+            mapMetadata[x][y] = {}
+        end
+    end
 
     -- try generating a good level
     for i=0, 3 do
@@ -241,7 +268,6 @@ end
 
 function love.draw()
     love.graphics.setFont(font)
-
     love.graphics.push()
     love.graphics.clear(0.7, 0.7, 0.7, 1)
     love.graphics.setColor(0, 0, 0, 1)
@@ -263,10 +289,15 @@ function love.draw()
     end
 
     -- path
-    love.graphics.setColor(1, 0, 1, 1)
     for x=0, numBlocks-1 do
         for y=0, numBlocks - 1 do
-            if map[x][y] == MAP_PATH then
+            if map[x][y] == MAP_PATH or map[x][y] == MAP_BLOCKED_PATH then
+                love.graphics.setColor(1, 0, 1, 1)
+                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
+            end
+
+            if map[x][y] == MAP_BLOCKED_PATH and mapMetadata[x][y].flashOn then
+                love.graphics.setColor(1, 0, 0, 1)
                 love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
             end
         end
@@ -330,24 +361,79 @@ function love.draw()
         end
     end
 
-
     love.graphics.pop()
+
+    -- purchase menu
+    if gameState == GAME_STATE_RUNNING and purchaseMenu then
+        love.graphics.setColor(0.2, 0.2, 0.2, 1)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", purchaseMenu.x, purchaseMenu.y, PURCHASE_MENU_WIDTH, PURCHASE_MENU_ROW_HEIGHT * purchaseMenu.numItems)
+        
+        for i=0, purchaseMenu.numItems - 1 do
+            if purchaseMenu.items[i + 1].focus then
+                love.graphics.setColor(0.7, 0.7, 0.7, 1)
+            else
+                love.graphics.setColor(1, 1, 1, 1)
+            end
+
+            if purchaseMenu.items[i + 1].price > money then
+                love.graphics.setColor(1, 0, 0, 1)
+            end
+            love.graphics.rectangle("fill", purchaseMenu.x, purchaseMenu.y + PURCHASE_MENU_ROW_HEIGHT * i, PURCHASE_MENU_WIDTH, PURCHASE_MENU_ROW_HEIGHT)
+        end
+
+        love.graphics.setColor(0.2, 0.2, 0.2, 1)
+        love.graphics.setLineWidth(1)
+        for i=1, purchaseMenu.numItems - 1 do
+            love.graphics.line(purchaseMenu.x, purchaseMenu.y + i * PURCHASE_MENU_ROW_HEIGHT, purchaseMenu.x + PURCHASE_MENU_WIDTH, purchaseMenu.y + i * PURCHASE_MENU_ROW_HEIGHT)
+        end
+
+        love.graphics.setColor(0, 0, 0, 1)
+        love.graphics.setFont(menuFont)
+        for i=0, purchaseMenu.numItems - 1 do
+            love.graphics.print(purchaseMenu.items[i + 1].title .. "($" .. purchaseMenu.items[i + 1].price .. ")", purchaseMenu.x + 10, purchaseMenu.y + (i + 0.5) * PURCHASE_MENU_ROW_HEIGHT - PURCHASE_MENU_FONT_SIZE / 2)
+        end
+    end
+
     -- overlay
     if gameState ~= GAME_STATE_RUNNING then
         love.graphics.setColor(1, 1, 1, 0.7)
         love.graphics.rectangle("fill", 0, 0, screenSize + 1, screenSize + textHeight)
 
         love.graphics.setColor(0, 0, 0, 1)
+        love.graphics.setFont(font)
         text = ""
         if gameState == GAME_STATE_BETWEEN_ROUNDS then
             text = "Click to continue to the next level!"
         elseif gameState == GAME_STATE_END then
-            text = "You made it to level " .. levels .. "! Click to restart"
+            text = "You made it to level " .. levels .. "! But ran out of money... Click to restart"
         elseif gameState == GAME_STATE_WAITING_TO_START then
-            text = "Click anywhere to start! Click an empty tile to place a tower."
+            text = "Click anywhere to start! Click on tiles to purchase upgrades"
         end
 
         love.graphics.print(text, screenSize / 2 - 200, screenSize / 2 - 10)
+    end
+end
+
+function love.mousemoved(x, y, dx, dy, istouch)
+    if purchaseMenu == nil then
+        return
+    end
+
+    for i=0, purchaseMenu.numItems - 1 do
+        purchaseMenu.items[i + 1].focus = false
+    end
+
+    if x > purchaseMenu.x and x < purchaseMenu.x + PURCHASE_MENU_WIDTH and y > purchaseMenu.y and y < purchaseMenu.y + PURCHASE_MENU_ROW_HEIGHT * purchaseMenu.numItems then
+        local itemId = math.floor((y - purchaseMenu.y) / PURCHASE_MENU_ROW_HEIGHT)
+        purchaseMenu.items[itemId + 1].focus = true
+    end
+
+    local centerX = purchaseMenu.x + PURCHASE_MENU_WIDTH / 2
+    local centerY = purchaseMenu.y + PURCHASE_MENU_ROW_HEIGHT * (purchaseMenu.numItems / 2.0)
+    local distance = math.sqrt(math.pow(x - centerX, 2) + math.pow(y - centerY, 2))
+    if distance > PURCHASE_MENU_CANCEL_DIST then
+        purchaseMenu = nil
     end
 end
 
@@ -370,6 +456,22 @@ function love.mousepressed(x, y, button, istouch)
     elseif gameState ~= GAME_STATE_RUNNING then
         return
     end
+
+    if purchaseMenu then
+        if x > purchaseMenu.x and x < purchaseMenu.x + PURCHASE_MENU_WIDTH and y > purchaseMenu.y and y < purchaseMenu.y + PURCHASE_MENU_ROW_HEIGHT * purchaseMenu.numItems then
+            local itemId = math.floor((y - purchaseMenu.y) / PURCHASE_MENU_ROW_HEIGHT)
+            local item = purchaseMenu.items[itemId + 1]
+            if money >= item.price then
+                money = money - item.price
+                item.action(purchaseMenu.blockX, purchaseMenu.blockY)
+            else
+                return
+            end
+        end
+
+        purchaseMenu = nil
+        return
+    end
     
     blockX = math.floor(x * numBlocks / screenSize)
     blockY = math.floor((y - textHeight) * numBlocks / screenSize)
@@ -378,11 +480,97 @@ function love.mousepressed(x, y, button, istouch)
         return
     end
 
-    if map[blockX][blockY] == MAP_BLANK then
-        if money >= TOWER_PRICE then
-            money = money - TOWER_PRICE
-            newTower(blockX, blockY)
+    purchaseMenu = {
+        x = x - PURCHASE_MENU_ROW_HEIGHT / 2,
+        y = y - PURCHASE_MENU_ROW_HEIGHT / 2,
+        blockX = blockX,
+        blockY = blockY,
+        numItems = 0
+    }
+
+    local type = map[blockX][blockY]
+    local metadata = mapMetadata[blockX][blockY]
+    if type == MAP_BLANK then
+        purchaseMenu.numItems = 1
+        purchaseMenu.items = {
+            {
+                title = "Purchase Tower",
+                price = TOWER_PRICE,
+                action = newTower
+            }
+        }
+    elseif type == MAP_PATH then
+        purchaseMenu.numItems = 1
+        purchaseMenu.items = {
+            {
+                title = "Block Temporarily",
+                price = BLOCK_PATH_PRICE,
+                action = function (x, y)
+                    map[x][y] = MAP_BLOCKED_PATH
+                    mapMetadata[x][y] = {
+                        status = STATUS_BLOCKED,
+                        timeRemaining = 10,
+                        flashTimeRemaining = 0.1,
+                        flashTime = 0.1,
+                        flashOn = true
+                    }
+                end
+            }
+        }
+    elseif type == MAP_TOWER then
+        purchaseMenu.items = {}
+
+        if not metadata[UPGRADE_SPEED] then
+            purchaseMenu.numItems = purchaseMenu.numItems + 1
+            purchaseMenu.items[purchaseMenu.numItems] = {
+                title = "Speed Upgrade",
+                price = UPGRADE_SPEED_PRICE,
+                action = function (x, y)
+                    mapMetadata[x][y][UPGRADE_SPEED] = true
+                    mapMetadata[x][y].tower.waitTime = 0.1
+                end
+            }
         end
+
+        if not metadata[UPGRADE_RANGE] then
+            purchaseMenu.numItems = purchaseMenu.numItems + 1
+            purchaseMenu.items[purchaseMenu.numItems] = {
+                title = "Range Upgrade",
+                price = UPGRADE_RANGE_PRICE,
+                action = function (x, y)
+                    mapMetadata[x][y][UPGRADE_RANGE] = true
+                    mapMetadata[x][y].tower.range = mapMetadata[x][y].tower.range * 2
+                end
+            }
+        end
+
+        if not metadata[UPGRADE_POWER] then
+            purchaseMenu.numItems = purchaseMenu.numItems + 1
+            purchaseMenu.items[purchaseMenu.numItems] = {
+                title = "Power Upgrade",
+                price = UPGRADE_POWER_PRICE,
+                action = function (x, y)
+                    mapMetadata[x][y][UPGRADE_POWER] = true
+                    mapMetadata[x][y].tower.damage = mapMetadata[x][y].tower.damage * 3
+                end
+            }
+        end
+
+    elseif type == MAP_TREE then
+        purchaseMenu.numItems = 1
+        purchaseMenu.items = {
+            {
+                title = "Clear Tree",
+                price = CLEAR_TREE_PRICE,
+                action = function (x, y) map[x][y] = MAP_BLANK end
+            }
+        }
+    end
+
+    if purchaseMenu.numItems > 0 then
+        purchaseMenu.items[1].focus = true
+    else
+        purchaseMenu = nil
     end
 end
 
@@ -424,6 +612,25 @@ function love.update(dt)
 
     for i=0, numTowers - 1 do
         updateTower(dt, towers[i])
+    end
+
+    for x=0, numBlocks-1 do
+        for y=0, numBlocks - 1 do
+            local m = mapMetadata[x][y]
+            if m and m.status == STATUS_BLOCKED then
+                m.timeRemaining = m.timeRemaining - dt
+                if m.timeRemaining < 0 then
+                    mapMetadata[x][y] = {}
+                    map[x][y] = MAP_PATH
+                else
+                    m.flashTimeRemaining = m.flashTimeRemaining - dt
+                    if m.flashTimeRemaining < 0 then
+                        m.flashOn = not m.flashOn
+                        m.flashTimeRemaining = m.flashTime
+                    end
+                end
+            end
+        end
     end
 end
 
