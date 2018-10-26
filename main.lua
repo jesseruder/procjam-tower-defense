@@ -53,11 +53,10 @@ function love.load()
     numBlocks = 10
     blockSize = screenSize / numBlocks
     lineSize = 3
-    numEnemies = 30
+    numEnemies = 50
     gameState = GAME_STATE_WAITING_TO_START
     font = love.graphics.newFont(14)
     menuFont = love.graphics.newFont(12)
-    level = 1
 
     math.randomseed(os.time())
     reset(true)
@@ -77,13 +76,9 @@ function resetEnemy()
         speed = 60,
         active = false,
         scoreKill = 20,
-        scoreLose = -200,
+        scoreLose = -50,
         visited = {}
     }
-
-    if money < 0 then
-        enemy.scoreKill = enemy.scoreKill * 2
-    end
 
     local pathfinderChance = 0
     if level > 3 then
@@ -93,11 +88,11 @@ function resetEnemy()
         pathfinderChance = 0.1
     end
     if money > 500 then
-        pathfinderChance = 0.3
+        pathfinderChance = 0.5
     elseif money > 400 then
-        pathfinderChance = 0.2
+        pathfinderChance = 0.35
     elseif money > 300 then
-        pathfinderChance = 0.1
+        pathfinderChance = 0.15
     end
 
     if math.random() < pathfinderChance then
@@ -132,6 +127,18 @@ function resetEnemy()
     enemy.health = enemy.health + level
     enemy.maxHealth = enemy.health
 
+    if money < 0 then
+        enemy.scoreKill = enemy.scoreKill * 2
+    elseif money > 1000 then
+        enemy.scoreKill = enemy.scoreKill / 2
+    end
+
+    if level > 5 then
+        enemy.scoreLose = -200
+    elseif level > 3 then
+        enemy.scoreLose = -100
+    end
+
     for j=0, numBlocks do
         enemy.visited[j] = {}
         for k=0, numBlocks do
@@ -162,6 +169,7 @@ end
 
 function reset(newGame)
     if newGame then
+        level = 1
         money = 300
     else
         level = level + 1
@@ -691,13 +699,9 @@ function love.update(dt)
                 adjustedSpawnRate = adjustedSpawnRate * 1.3
             end
 
-            if level > 6 then
-                adjustedSpawnRate = adjustedSpawnRate * 2
-            elseif level > 3 then
-                adjustedSpawnRate = adjustedSpawnRate * 1.3
-            end
+            adjustedSpawnRate = adjustedSpawnRate * (1 + level / 3)
 
-            if math.random() < dt * ENEMY_SPAWN_RATE then
+            if math.random() < dt * adjustedSpawnRate then
                 enemies[i] = resetEnemy()
                 enemy = enemies[i]
                 enemy.active = true
