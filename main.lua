@@ -25,6 +25,7 @@ function love.load()
     lineSize = 3
     numEnemies = 20
     gameState = GAME_STATE_WAITING_TO_START
+    font = love.graphics.newFont(14)
 
     math.randomseed(os.time())
     reset(true)
@@ -42,7 +43,7 @@ function resetEnemy()
         speed = 60,
         active = false,
         scoreKill = 20,
-        scoreLose = -50,
+        scoreLose = -200,
         spawnRate = 0.05,
         visited = {}
     }
@@ -76,6 +77,9 @@ end
 function reset(newGame)
     if newGame then
         money = 300
+        levels = 1
+    else
+        levels = levels + 1
     end
     lastX = -1
     lastY = -1
@@ -231,6 +235,8 @@ function drawPath(x, y, lastDx, lastDy, depth)
 end
 
 function love.draw()
+    love.graphics.setFont(font)
+
     love.graphics.push()
     love.graphics.clear(0.7, 0.7, 0.7, 1)
     love.graphics.setColor(0, 0, 0, 1)
@@ -307,11 +313,24 @@ function love.draw()
         end
     end
 
+
     love.graphics.pop()
     -- overlay
     if gameState ~= GAME_STATE_RUNNING then
         love.graphics.setColor(1, 1, 1, 0.7)
         love.graphics.rectangle("fill", 0, 0, screenSize + 1, screenSize + textHeight)
+
+        love.graphics.setColor(0, 0, 0, 1)
+        text = ""
+        if gameState == GAME_STATE_BETWEEN_ROUNDS then
+            text = "Click to continue to the next level!"
+        elseif gameState == GAME_STATE_END then
+            text = "You made it to level " .. levels .. "! Click to restart"
+        elseif gameState == GAME_STATE_WAITING_TO_START then
+            text = "Click anywhere to start! Click an empty tile to place a tower."
+        end
+
+        love.graphics.print(text, screenSize / 2 - 200, screenSize / 2 - 10)
     end
 end
 
