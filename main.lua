@@ -411,7 +411,7 @@ function love.draw()
         end
     end
 
-    love.graphics.print("$" .. money, screenSize - 100, 10)
+    love.graphics.print("$" .. money, screenWidth - 100, 10)
 
     love.graphics.translate(0, textHeight)
 
@@ -479,17 +479,8 @@ function love.draw()
 
     
     --[=====[ 
-    love.graphics.setLineWidth(1)
-    for x = 0, numBlocks, 1
-    do
-        love.graphics.line(x * blockSize, 0, x * blockSize, screenSize)
-    end
     
-    for y = 0, numBlocks, 1
-    do
-        love.graphics.line(0, y * blockSize, screenSize, y * blockSize)
-    end
-
+    NEED TO DO FLASHING BLOCKED PATH STILL
     -- path
     for x=0, numBlocks-1 do
         for y=0, numBlocks - 1 do
@@ -505,16 +496,7 @@ function love.draw()
         end
     end
 
-    -- tree
-    love.graphics.setColor(34/256, 139/256, 34/256, 1)
-    for x=0, numBlocks-1 do
-        for y=0, numBlocks - 1 do
-            if map[x][y] == MAP_TREE then
-                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
-            end
-        end
-    end
-
+    
     -- towers
     love.graphics.setColor(0, 0, 1, 1)
     for x=0, numBlocks-1 do
@@ -525,6 +507,9 @@ function love.draw()
         end
     end
 
+    
+    --]=====]
+
     -- bullets
     love.graphics.setColor(1, 0, 0, 1)
     love.graphics.setLineWidth(4)
@@ -534,13 +519,12 @@ function love.draw()
             if tower.enemyId > -1 then
                 enemy = enemies[tower.enemyId]
                 if enemy.active then
-                    love.graphics.line(tower.x, tower.y, enemy.x, enemy.y)
+                    love.graphics.line(quadToIsoX(tower.x, tower.y), quadToIsoY(tower.x, tower.y), quadToIsoX(enemy.x, enemy.y), quadToIsoY(enemy.x, enemy.y))
                 end
             end
         end
     end
-    
-    --]=====]
+
     -- enemies
     love.graphics.setColor(1, 1, 1, 1)
     if gameState == GAME_STATE_RUNNING then
@@ -555,17 +539,19 @@ function love.draw()
                     love.graphics.setColor(0, 0, 0, 1)
                 end
 
-                love.graphics.circle("fill", quadToIsoX(enemy.x, enemy.y), quadToIsoY(enemy.x, enemy.y), 10)
+                local ix = quadToIsoX(enemy.x, enemy.y)
+                local iy = quadToIsoY(enemy.x, enemy.y)
+                love.graphics.circle("fill", ix, iy, 10)
 
                 if enemy.health < enemy.maxHealth then
                     local healthPercent = enemy.health / enemy.maxHealth
                     love.graphics.setColor(0.2, 0.2, 0.2, 1)
                     love.graphics.setLineWidth(2)
-                    love.graphics.rectangle("line", enemy.x - HEALTH_BAR_WIDTH / 2.0, enemy.y + HEALTH_BAR_Y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT)
+                    love.graphics.rectangle("line", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT)
                     love.graphics.setColor(1, 1, 1, 1)
-                    love.graphics.rectangle("fill", enemy.x - HEALTH_BAR_WIDTH / 2.0, enemy.y + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * healthPercent, HEALTH_BAR_HEIGHT)
+                    love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * healthPercent, HEALTH_BAR_HEIGHT)
                     love.graphics.setColor(1, 0, 0, 1)
-                    love.graphics.rectangle("fill", enemy.x - HEALTH_BAR_WIDTH / 2.0 + HEALTH_BAR_WIDTH * healthPercent, enemy.y + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * (1.0 - healthPercent), HEALTH_BAR_HEIGHT)
+                    love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0 + HEALTH_BAR_WIDTH * healthPercent, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * (1.0 - healthPercent), HEALTH_BAR_HEIGHT)
                 end
             end
         end
@@ -608,7 +594,7 @@ function love.draw()
     -- overlay
     if gameState ~= GAME_STATE_RUNNING then
         love.graphics.setColor(1, 1, 1, 0.7)
-        love.graphics.rectangle("fill", 0, 0, screenSize + 1, screenSize + textHeight)
+        love.graphics.rectangle("fill", 0, 0, screenWidth, screenSize + textHeight)
 
         love.graphics.setColor(0, 0, 0, 1)
         love.graphics.setFont(font)
@@ -621,7 +607,7 @@ function love.draw()
             text = "Click anywhere to start! Click on tiles to purchase upgrades"
         end
 
-        love.graphics.print(text, screenSize / 2 - 200, screenSize / 2 - 10)
+        love.graphics.print(text, screenWidth / 2 - 200, screenSize / 2 - 10)
     end
 end
 
@@ -692,8 +678,9 @@ function love.mousepressed(x, y, button, istouch)
         return
     end
     
-    blockX = math.floor(x * numBlocks / screenSize)
-    blockY = math.floor((y - textHeight) * numBlocks / screenSize)
+
+    blockX = math.floor(iosToQuadX(x, y) / blockSize)
+    blockY = math.floor(iosToQuadY(x, y) / blockSize)
 
     if blockX < 0 or blockY < 0 or blockX >= numBlocks or blockY >= numBlocks then
         return
