@@ -4,8 +4,12 @@ MAP_TOWER=2
 MAP_TREE=3
 MAP_BLOCKED_PATH=4
 
+MAP_TREE_TYPES=2
+
 QUAD_WIDTH=111
 QUAD_HEIGHT=128
+TALL_QUAD_HEIGHT=200
+TOWER_QUAD_HEIGHT=270
 
 -- even number plz
 NUM_BLOCKS=10
@@ -53,9 +57,14 @@ ENEMY_TYPE_FLY="fly"
 ENEMY_SPAWN_RATE=0.014
 
 function love.load()
-    imageDirt = love.graphics.newImage("platformerTile_01.png")
-    imageGrass = love.graphics.newImage("platformerTile_48.png")
+    imageDirt = love.graphics.newImage("dirt.png")
+    imageGrass = love.graphics.newImage("grass.png")
+    imageTree = love.graphics.newImage("weeds.png")
+    imageTree2 = love.graphics.newImage("weeds2.png")
+    imageTower = love.graphics.newImage("gnome.png")
     quad = love.graphics.newQuad(0, 0, QUAD_WIDTH, QUAD_HEIGHT, imageDirt:getWidth(), imageDirt:getHeight())
+    tallQuad = love.graphics.newQuad(0, 0, QUAD_WIDTH, TALL_QUAD_HEIGHT, imageTree:getWidth(), imageTree:getHeight())
+    towerQuad = love.graphics.newQuad(0, 0, QUAD_WIDTH, TOWER_QUAD_HEIGHT, imageTower:getWidth(), imageTower:getHeight())
 
     local width, height, flags = love.window.getMode()
     textHeight = 40
@@ -302,6 +311,7 @@ function reset(newGame)
                     map[x][y] = MAP_TREE
                 end
             end
+            mapMetadata[x][y].treeType = math.floor(math.random() * MAP_TREE_TYPES)
         end
     end
 end
@@ -397,10 +407,38 @@ function drawPath(x, y, lastDx, lastDy, depth)
     return drawPath(x, y, dx, dy, depth + 1)
 end
 
+function drawBlock(x, y, quadX, quadY)
+    if hoverBlockX == x and hoverBlockY == y then
+        love.graphics.setColor(0.8, 0.8, 0.8, 1)
+    else
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    local image = imageGrass
+    local extraY = -QUAD_HEIGHT / 8
+    extraY = 0
+    if map[x][y] == MAP_PATH then
+        image = imageDirt
+        extraY = 0
+    end
+
+    if map[x][y] == MAP_PATH or map[x][y] == MAP_BLANK then
+        love.graphics.draw(image, quad, quadX, quadY + extraY)
+    elseif map[x][y] == MAP_TREE then
+        image = imageTree
+        if mapMetadata[x][y].treeType == 1 then
+            image = imageTree2
+        end
+        love.graphics.draw(image, tallQuad, quadX, quadY + extraY - (TALL_QUAD_HEIGHT - QUAD_HEIGHT))
+    elseif map[x][y] == MAP_TOWER then
+        love.graphics.draw(imageTower, towerQuad, quadX, quadY + extraY - (TOWER_QUAD_HEIGHT - QUAD_HEIGHT))
+    end
+end
+
 function love.draw()
     love.graphics.setFont(font)
     love.graphics.push()
-    love.graphics.clear(0.7, 0.7, 0.7, 1)
+    love.graphics.clear(0.529, 0.808, 0.98, 1)
     love.graphics.setColor(0, 0, 0, 1)
     
     if gameState == GAME_STATE_RUNNING then
@@ -426,20 +464,7 @@ function love.draw()
             local x = across
             local y = depth - across
 
-            if hoverBlockX == x and hoverBlockY == y then
-                love.graphics.setColor(0.8, 0.8, 0.8, 1)
-            else
-                love.graphics.setColor(1, 1, 1, 1)
-            end
-
-            local image = imageGrass
-            local extraY = -QUAD_HEIGHT / 8
-            extraY = 0
-            if map[x][y] == MAP_PATH then
-                image = imageDirt
-                extraY = 0
-            end
-            love.graphics.draw(image, quad, (across - depth / 2 - 0.5) * QUAD_WIDTH, depth * QUAD_HEIGHT / 4 + extraY)
+            drawBlock(x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, depth * QUAD_HEIGHT / 4)
         end
     end
 
@@ -448,20 +473,7 @@ function love.draw()
             local x = across + (numBlocks - 1 - depth)
             local y = numBlocks - 1 - across
 
-            if hoverBlockX == x and hoverBlockY == y then
-                love.graphics.setColor(0.8, 0.8, 0.8, 1)
-            else
-                love.graphics.setColor(1, 1, 1, 1)
-            end
-
-            local image = imageGrass
-            local extraY = -QUAD_HEIGHT / 8
-            extraY = 0
-            if map[x][y] == MAP_PATH then
-                image = imageDirt
-                extraY = 0
-            end
-            love.graphics.draw(image, quad, (across - depth / 2 - 0.5) * QUAD_WIDTH, (2 * numBlocks - 2 - depth) * QUAD_HEIGHT / 4 + extraY)
+            drawBlock(x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, (2 * numBlocks - 2 - depth) * QUAD_HEIGHT / 4)
         end
     end
 
