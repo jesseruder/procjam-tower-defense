@@ -4,6 +4,11 @@ MAP_TOWER=2
 MAP_TREE=3
 MAP_BLOCKED_PATH=4
 
+-- even number plz
+NUM_BLOCKS=10
+MAX_PATH_DEPTH=30
+MAX_PATH_SECTION_LENGTH=3
+
 STATUS_BLOCKED="blocked"
 UPGRADE_SPEED="speed"
 UPGRADE_SPEED_PRICE=50
@@ -50,7 +55,7 @@ function love.load()
     screenWidth = width
     screenHeight = height - textHeight
     screenSize = screenWidth > screenHeight and screenHeight or screenWidth
-    numBlocks = 10
+    numBlocks = NUM_BLOCKS
     blockSize = screenSize / numBlocks
     lineSize = 3
     numEnemies = 50
@@ -282,7 +287,7 @@ function newLevel()
 end
 
 function drawPath(x, y, lastDx, lastDy, depth)
-    if depth > 20 then
+    if depth > MAX_PATH_DEPTH then
         return -1
     end
 
@@ -305,7 +310,7 @@ function drawPath(x, y, lastDx, lastDy, depth)
         return drawPath(x, y, lastDx, lastDy, depth)
     end
 
-    dist = math.floor(math.random() * 3) + 1
+    dist = math.floor(math.random() * MAX_PATH_SECTION_LENGTH) + 1
     for i=0, dist do
         x = x + dx
         y = y + dy
