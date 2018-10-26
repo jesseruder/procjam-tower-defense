@@ -42,6 +42,8 @@ ENEMY_TYPE_DUMB="dumb"
 ENEMY_TYPE_PATHFINDER="pathfinder"
 ENEMY_TYPE_FLY="fly"
 
+ENEMY_SPAWN_RATE=0.014
+
 function love.load()
     local width, height, flags = love.window.getMode()
     textHeight = 40
@@ -51,10 +53,11 @@ function love.load()
     numBlocks = 10
     blockSize = screenSize / numBlocks
     lineSize = 3
-    numEnemies = 20
+    numEnemies = 30
     gameState = GAME_STATE_WAITING_TO_START
     font = love.graphics.newFont(14)
     menuFont = love.graphics.newFont(12)
+    level = 1
 
     math.randomseed(os.time())
     reset(true)
@@ -75,18 +78,49 @@ function resetEnemy()
         active = false,
         scoreKill = 20,
         scoreLose = -200,
-        spawnRate = 0.05,
         visited = {}
     }
 
-    if money > 300 and math.random() < 0.2 then
+    if money < 0 then
+        enemy.scoreKill = enemy.scoreKill * 2
+    end
+
+    local pathfinderChance = 0
+    if level > 3 then
+        flyChance = 0.05
+    end
+    if time < 20 then
+        pathfinderChance = 0.1
+    end
+    if money > 500 then
+        pathfinderChance = 0.3
+    elseif money > 400 then
+        pathfinderChance = 0.2
+    elseif money > 300 then
+        pathfinderChance = 0.1
+    end
+
+    if math.random() < pathfinderChance then
         enemy.type = ENEMY_TYPE_PATHFINDER
         enemy.speed = 100
         enemy.health = 7
         enemy.maxHealth = 7
     end
 
-    if money > 500 and math.random() < 0.1 then
+    local flyChance = 0
+    if level > 4 then
+        flyChance = 0.04
+    end
+
+    if money > 700 then
+        flyChance = 0.3
+    elseif money > 500 then
+        flyChance = 0.2
+    elseif money > 400 then
+        flyChance = 0.05
+    end
+
+    if math.random() < flyChance then
         enemy.type = ENEMY_TYPE_FLY
         enemy.speed = 20
         enemy.health = 40
@@ -94,7 +128,9 @@ function resetEnemy()
         enemy.scoreKill = 50
     end
 
-    enemy.speed = enemy.speed + math.random() * 8
+    enemy.speed = enemy.speed + math.random() * (8 + level)
+    enemy.health = enemy.health + level
+    enemy.maxHealth = enemy.health
 
     for j=0, numBlocks do
         enemy.visited[j] = {}
@@ -127,9 +163,8 @@ end
 function reset(newGame)
     if newGame then
         money = 300
-        levels = 1
     else
-        levels = levels + 1
+        level = level + 1
     end
     purchaseMenu = nil
     lastX = -1
@@ -138,7 +173,7 @@ function reset(newGame)
     enemies = {}
     towers = {}
     numTowers = 0
-    time = 60
+    time = 90
     for i=0, numEnemies do
         enemies[i] = resetEnemy(enemy)
     end
@@ -443,7 +478,7 @@ function love.draw()
         if gameState == GAME_STATE_BETWEEN_ROUNDS then
             text = "Click to continue to the next level!"
         elseif gameState == GAME_STATE_END then
-            text = "You made it to level " .. levels .. "! But ran out of money... Click to restart"
+            text = "You made it to level " .. level .. "! But ran out of money... Click to restart"
         elseif gameState == GAME_STATE_WAITING_TO_START then
             text = "Click anywhere to start! Click on tiles to purchase upgrades"
         end
@@ -643,10 +678,29 @@ function love.update(dt)
                 enemyMoveFly(dt, enemy)
             end
         else
-            if math.random() < dt * enemy.spawnRate then
+            adjustedSpawnRate = ENEMY_SPAWN_RATE
+            if money > 1000 then
+                adjustedSpawnRate = adjustedSpawnRate * 6
+            elseif money > 700 then
+                adjustedSpawnRate = adjustedSpawnRate * 4
+            elseif money > 650 then
+                adjustedSpawnRate = adjustedSpawnRate * 3
+            elseif money > 500 then
+                adjustedSpawnRate = adjustedSpawnRate * 2
+            elseif money > 300 then
+                adjustedSpawnRate = adjustedSpawnRate * 1.3
+            end
+
+            if level > 6 then
+                adjustedSpawnRate = adjustedSpawnRate * 2
+            elseif level > 3 then
+                adjustedSpawnRate = adjustedSpawnRate * 1.3
+            end
+
+            if math.random() < dt * ENEMY_SPAWN_RATE then
                 enemies[i] = resetEnemy()
                 enemy = enemies[i]
-                enemy.active = 0
+                enemy.active = true
             end
         end
     end
