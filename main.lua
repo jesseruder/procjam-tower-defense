@@ -4,6 +4,9 @@ MAP_TOWER=2
 MAP_TREE=3
 MAP_BLOCKED_PATH=4
 
+QUAD_WIDTH=111
+QUAD_HEIGHT=128
+
 -- even number plz
 NUM_BLOCKS=10
 MAX_PATH_DEPTH=30
@@ -23,7 +26,7 @@ BLOCK_STATUS_DURATION=10
 
 BLANK_PERCENTAGE=0.25
 
-TOWER_PRICE=100
+TOWER_PRICE=80
 CLEAR_TREE_PRICE=50
 BLOCK_PATH_PRICE=300
 
@@ -50,6 +53,10 @@ ENEMY_TYPE_FLY="fly"
 ENEMY_SPAWN_RATE=0.014
 
 function love.load()
+    imageDirt = love.graphics.newImage("platformerTile_01.png")
+    imageGrass = love.graphics.newImage("platformerTile_48.png")
+    quad = love.graphics.newQuad(0, 0, QUAD_WIDTH, QUAD_HEIGHT, imageDirt:getWidth(), imageDirt:getHeight())
+
     local width, height, flags = love.window.getMode()
     textHeight = 40
     screenWidth = width
@@ -63,8 +70,52 @@ function love.load()
     font = love.graphics.newFont(14)
     menuFont = love.graphics.newFont(12)
 
+    -- isometric
+    originX = 0
+    originY = 0
+    rightVecX = QUAD_WIDTH / 2
+    rightVecY = QUAD_HEIGHT / 4
+    downVecX = -QUAD_WIDTH / 2
+    downVecY = QUAD_HEIGHT / 4
+
+    isoTest = false
+
     math.randomseed(os.time())
     reset(true)
+end
+
+function quadToIsoX(x, y)
+    return originX + rightVecX * x / blockSize + downVecX * y / blockSize
+end
+
+function quadToIsoY(x, y)
+    return originY + rightVecY * x / blockSize + downVecY * y / blockSize
+end
+
+function iosToQuadX(x, y)
+    x = x - screenWidth / 2
+    y = y - textHeight
+    x = x / 0.8
+    y = y / 0.8
+
+    return blockSize * rayIntersect(originX, originY, originX + rightVecX, originY + rightVecY, x, y, x - downVecX, y - downVecY)
+end
+
+function iosToQuadY(x, y)
+    x = x - screenWidth / 2
+    y = y - textHeight
+    x = x / 0.8
+    y = y / 0.8
+
+    return blockSize * rayIntersect(originX, originY, originX + downVecX, originY + downVecY, x, y, x - rightVecX, y - rightVecY)
+end
+
+function rayIntersect(ax, ay, bx, by, cx, cy, dx, dy)
+    nx = cy - dy
+    ny = dx - cx
+    numerator = (cx - ax) * nx + (cy - ay) * ny
+    denom = (bx - ax) * nx + (by - ay) * ny
+    return numerator / denom;
 end
 
 function resetEnemy()
@@ -74,11 +125,11 @@ function resetEnemy()
         y = (math.floor(numBlocks / 2) + 0.5) * blockSize,
         dx = 1,
         dy = 0,
-        health = 20,
-        maxHealth = 20,
+        health = 15,
+        maxHealth = 15,
         newDirectionDecided = false,
         lastBlock = false,
-        speed = 60,
+        speed = 50,
         active = false,
         scoreKill = 20,
         scoreLose = -50,
@@ -180,6 +231,8 @@ function reset(newGame)
         level = level + 1
     end
     purchaseMenu = nil
+    hoverBlockX = -1
+    hoverBlockY = -1
     lastX = -1
     lastY = -1
     depth = -1
@@ -187,10 +240,10 @@ function reset(newGame)
     towers = {}
     numTowers = 0
     time = 90
+    initialTime = time
     for i=0, numEnemies do
         enemies[i] = resetEnemy(enemy)
     end
-    enemies[0].active = true
 
     mapMetadata = {}
     for x=0, numBlocks-1 do
@@ -201,16 +254,16 @@ function reset(newGame)
     end
 
     -- try generating a good level
-    for i=0, 3 do
+    for i=0, 5 do
         depth = newLevel()
-        if depth > 12 then
+        if depth > 15 then
             break
         end
     end
 
-    for i=0, 3 do
+    for i=0, 5 do
         depth = newLevel()
-        if depth > 8 then
+        if depth > 10 then
             break
         end
     end
@@ -349,12 +402,83 @@ function love.draw()
     love.graphics.push()
     love.graphics.clear(0.7, 0.7, 0.7, 1)
     love.graphics.setColor(0, 0, 0, 1)
-    love.graphics.print("Time: " .. math.floor(time + 0.5), 20, 10)
+    
+    if gameState == GAME_STATE_RUNNING then
+        if time > 0 then
+            love.graphics.print("Time: " .. math.floor(time + 0.5), 20, 10)
+        else
+            love.graphics.print("No time remaining. Finish clearing the enemies!", 20, 10)
+        end
+    end
+
     love.graphics.print("$" .. money, screenSize - 100, 10)
 
     love.graphics.translate(0, textHeight)
-    love.graphics.setColor(1, 0, 0, 1)
 
+    love.graphics.translate(screenWidth / 2, 0)
+    love.graphics.scale(0.8, 0.8)
+
+    love.graphics.setColor(1, 1, 1, 1)
+
+    
+    for depth=0, numBlocks-1 do
+        for across=0, depth do
+            local x = across
+            local y = depth - across
+
+            if hoverBlockX == x and hoverBlockY == y then
+                love.graphics.setColor(0.8, 0.8, 0.8, 1)
+            else
+                love.graphics.setColor(1, 1, 1, 1)
+            end
+
+            local image = imageGrass
+            local extraY = -QUAD_HEIGHT / 8
+            extraY = 0
+            if map[x][y] == MAP_PATH then
+                image = imageDirt
+                extraY = 0
+            end
+            love.graphics.draw(image, quad, (across - depth / 2 - 0.5) * QUAD_WIDTH, depth * QUAD_HEIGHT / 4 + extraY)
+        end
+    end
+
+    for depth=numBlocks-2, 0, -1 do
+        for across=0, depth do
+            local x = across + (numBlocks - 1 - depth)
+            local y = numBlocks - 1 - across
+
+            if hoverBlockX == x and hoverBlockY == y then
+                love.graphics.setColor(0.8, 0.8, 0.8, 1)
+            else
+                love.graphics.setColor(1, 1, 1, 1)
+            end
+
+            local image = imageGrass
+            local extraY = -QUAD_HEIGHT / 8
+            extraY = 0
+            if map[x][y] == MAP_PATH then
+                image = imageDirt
+                extraY = 0
+            end
+            love.graphics.draw(image, quad, (across - depth / 2 - 0.5) * QUAD_WIDTH, (2 * numBlocks - 2 - depth) * QUAD_HEIGHT / 4 + extraY)
+        end
+    end
+
+    
+    if isoTest then
+        love.graphics.setLineWidth(1)
+        love.graphics.setColor(0, 0, 1, 1)
+        love.graphics.line(originX, originY, originX + rightVecX, originY + rightVecY)
+        love.graphics.line(originX, originY, originX + downVecX, originY + downVecY)
+
+        love.graphics.setColor(1, 0, 0, 1)
+        love.graphics.setPointSize(2)
+        love.graphics.points(originX, originY)
+    end
+
+    
+    --[=====[ 
     love.graphics.setLineWidth(1)
     for x = 0, numBlocks, 1
     do
@@ -415,7 +539,8 @@ function love.draw()
             end
         end
     end
-
+    
+    --]=====]
     -- enemies
     love.graphics.setColor(1, 1, 1, 1)
     if gameState == GAME_STATE_RUNNING then
@@ -430,7 +555,7 @@ function love.draw()
                     love.graphics.setColor(0, 0, 0, 1)
                 end
 
-                love.graphics.circle("fill", enemy.x, enemy.y, 10)
+                love.graphics.circle("fill", quadToIsoX(enemy.x, enemy.y), quadToIsoY(enemy.x, enemy.y), 10)
 
                 if enemy.health < enemy.maxHealth then
                     local healthPercent = enemy.health / enemy.maxHealth
@@ -501,7 +626,16 @@ function love.draw()
 end
 
 function love.mousemoved(x, y, dx, dy, istouch)
+    hoverBlockX = -1
+    hoverBlockY = -1
+
     if purchaseMenu == nil then
+        blockX = math.floor(iosToQuadX(x, y) / blockSize)
+        blockY = math.floor(iosToQuadY(x, y) / blockSize)
+        if blockX >=0 and blockY >= 0 and blockX < numBlocks and blockY < numBlocks then
+            hoverBlockX = blockX
+            hoverBlockY = blockY
+        end
         return
     end
 
@@ -673,10 +807,25 @@ function love.update(dt)
     time = time - dt
     if time <= 0 then
         time = 0
-        if money >= MIN_MONEY_TO_CONTINUE then
-            gameState = GAME_STATE_BETWEEN_ROUNDS
-        else
-            gameState = GAME_STATE_END
+
+        -- wait until all enemies are dead
+        local isEnemyAlive = false
+        for i=0, numEnemies do
+            enemy = enemies[i]
+            if enemy.active then
+                isEnemyAlive = true
+                break
+            end
+        end
+
+        if not isEnemyAlive then
+            if money >= MIN_MONEY_TO_CONTINUE then
+                gameState = GAME_STATE_BETWEEN_ROUNDS
+            else
+                gameState = GAME_STATE_END
+            end
+
+            return
         end
     end
 
@@ -705,6 +854,18 @@ function love.update(dt)
             end
 
             adjustedSpawnRate = adjustedSpawnRate * (1 + level / 3)
+
+            if initialTime - time < 5 then
+                adjustedSpawnRate = 0
+            elseif initialTime - time > 10 then
+                adjustedSpawnRate = adjustedSpawnRate / 2
+            elseif initialTime - time > 20 then
+                adjustedSpawnRate = adjustedSpawnRate / 1.3
+            end
+
+            if time == 0 then
+                adjustedSpawnRate = 0
+            end
 
             if math.random() < dt * adjustedSpawnRate then
                 enemies[i] = resetEnemy()
