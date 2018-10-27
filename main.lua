@@ -58,6 +58,7 @@ ENEMY_SPAWN_RATE=0.014
 
 function love.load()
     imageDirt = love.graphics.newImage("dirt.png")
+    imageRedDirt = love.graphics.newImage("red.png")
     imageGrass = love.graphics.newImage("grass.png")
     imageTree = love.graphics.newImage("weeds.png")
     imageTree2 = love.graphics.newImage("weeds2.png")
@@ -407,7 +408,7 @@ function drawPath(x, y, lastDx, lastDy, depth)
     return drawPath(x, y, dx, dy, depth + 1)
 end
 
-function drawBlock(x, y, quadX, quadY)
+function drawBlock(isPath, x, y, quadX, quadY, mapItems)
     if hoverBlockX == x and hoverBlockY == y then
         love.graphics.setColor(0.8, 0.8, 0.8, 1)
     else
@@ -417,21 +418,67 @@ function drawBlock(x, y, quadX, quadY)
     local image = imageGrass
     local extraY = -QUAD_HEIGHT / 8
     extraY = 0
-    if map[x][y] == MAP_PATH then
+    if map[x][y] == MAP_PATH or map[x][y] == MAP_BLOCKED_PATH then
         image = imageDirt
         extraY = 0
     end
 
-    if map[x][y] == MAP_PATH or map[x][y] == MAP_BLANK then
-        love.graphics.draw(image, quad, quadX, quadY + extraY)
-    elseif map[x][y] == MAP_TREE then
-        image = imageTree
-        if mapMetadata[x][y].treeType == 1 then
-            image = imageTree2
+    if map[x][y] == MAP_BLOCKED_PATH and mapMetadata[x][y].flashOn then
+        if isPath then
+            love.graphics.draw(imageRedDirt, quad, quadX, quadY + extraY)
         end
-        love.graphics.draw(image, tallQuad, quadX, quadY + extraY - (TALL_QUAD_HEIGHT - QUAD_HEIGHT))
+    elseif map[x][y] == MAP_PATH or map[x][y] == MAP_BLANK or map[x][y] == MAP_BLOCKED_PATH then
+        if isPath then
+            love.graphics.draw(image, quad, quadX, quadY + extraY)
+        end
+    elseif map[x][y] == MAP_TREE then
+        if isPath then
+            love.graphics.draw(imageGrass, quad, quadX, quadY + extraY)
+        else
+            image = imageTree
+            if mapMetadata[x][y].treeType == 1 then
+                image = imageTree2
+            end
+            love.graphics.draw(image, tallQuad, quadX, quadY + extraY - (TALL_QUAD_HEIGHT - QUAD_HEIGHT))
+        end
     elseif map[x][y] == MAP_TOWER then
-        love.graphics.draw(imageTower, towerQuad, quadX, quadY + extraY - (TOWER_QUAD_HEIGHT - QUAD_HEIGHT))
+        if isPath then
+            love.graphics.draw(imageGrass, quad, quadX, quadY + extraY)
+        else
+            love.graphics.draw(imageTower, towerQuad, quadX, quadY + extraY - (TOWER_QUAD_HEIGHT - QUAD_HEIGHT))
+        end
+    end
+
+    if isPath then return end
+
+    local items = mapItems[x][y]
+    for i=0, items.count - 1 do
+        local item = items.items[i]
+        if item.enemy then
+            local enemy = item.enemy
+            if enemy.type == ENEMY_TYPE_DUMB then
+                love.graphics.setColor(0.7, 0.7, 1, 1)
+            elseif enemy.type == ENEMY_TYPE_PATHFINDER then
+                love.graphics.setColor(0.9, 0.9, 0, 1)
+            elseif enemy.type == ENEMY_TYPE_FLY then
+                love.graphics.setColor(0, 0, 0, 1)
+            end
+
+            local ix = quadToIsoX(enemy.x, enemy.y)
+            local iy = quadToIsoY(enemy.x, enemy.y)
+            love.graphics.circle("fill", ix, iy, 10)
+
+            if enemy.health < enemy.maxHealth then
+                local healthPercent = enemy.health / enemy.maxHealth
+                love.graphics.setColor(0.2, 0.2, 0.2, 1)
+                love.graphics.setLineWidth(2)
+                love.graphics.rectangle("line", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT)
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * healthPercent, HEALTH_BAR_HEIGHT)
+                love.graphics.setColor(1, 0, 0, 1)
+                love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0 + HEALTH_BAR_WIDTH * healthPercent, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * (1.0 - healthPercent), HEALTH_BAR_HEIGHT)
+            end
+        end
     end
 end
 
@@ -457,14 +504,41 @@ function love.draw()
     love.graphics.scale(0.8, 0.8)
 
     love.graphics.setColor(1, 1, 1, 1)
-
     
+    local mapItems = {}
+    for x=0, numBlocks-1 do
+        mapItems[x] = {}
+        for y=0, numBlocks - 1 do
+            mapItems[x][y] = {
+                items = {},
+                count = 0
+            }
+        end
+    end
+
+    if gameState == GAME_STATE_RUNNING then
+        for i=0, numEnemies do
+            local enemy = enemies[i]
+            if enemy.active then
+                local blockX = math.floor(enemy.x / blockSize)
+                local blockY = math.floor(enemy.y / blockSize)
+                if blockX >= 0 and blockY >= 0 and blockX < numBlocks and blockY < numBlocks then
+                    local mapBlock = mapItems[blockX][blockY]
+                    mapBlock.items[mapBlock.count] = {
+                        enemy = enemy
+                    }
+                    mapBlock.count = mapBlock.count + 1
+                end
+            end
+        end
+    end
+
     for depth=0, numBlocks-1 do
         for across=0, depth do
             local x = across
             local y = depth - across
 
-            drawBlock(x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, depth * QUAD_HEIGHT / 4)
+            drawBlock(true, x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, depth * QUAD_HEIGHT / 4, mapItems)
         end
     end
 
@@ -473,11 +547,28 @@ function love.draw()
             local x = across + (numBlocks - 1 - depth)
             local y = numBlocks - 1 - across
 
-            drawBlock(x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, (2 * numBlocks - 2 - depth) * QUAD_HEIGHT / 4)
+            drawBlock(true, x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, (2 * numBlocks - 2 - depth) * QUAD_HEIGHT / 4, mapItems)
         end
     end
 
-    
+    for depth=0, numBlocks-1 do
+        for across=0, depth do
+            local x = across
+            local y = depth - across
+
+            drawBlock(false, x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, depth * QUAD_HEIGHT / 4, mapItems)
+        end
+    end
+
+    for depth=numBlocks-2, 0, -1 do
+        for across=0, depth do
+            local x = across + (numBlocks - 1 - depth)
+            local y = numBlocks - 1 - across
+
+            drawBlock(false, x, y, (across - depth / 2 - 0.5) * QUAD_WIDTH, (2 * numBlocks - 2 - depth) * QUAD_HEIGHT / 4, mapItems)
+        end
+    end
+
     if isoTest then
         love.graphics.setLineWidth(1)
         love.graphics.setColor(0, 0, 1, 1)
@@ -489,39 +580,6 @@ function love.draw()
         love.graphics.points(originX, originY)
     end
 
-    
-    --[=====[ 
-    
-    NEED TO DO FLASHING BLOCKED PATH STILL
-    -- path
-    for x=0, numBlocks-1 do
-        for y=0, numBlocks - 1 do
-            if map[x][y] == MAP_PATH or map[x][y] == MAP_BLOCKED_PATH then
-                love.graphics.setColor(1, 0, 1, 1)
-                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
-            end
-
-            if map[x][y] == MAP_BLOCKED_PATH and mapMetadata[x][y].flashOn then
-                love.graphics.setColor(1, 0, 0, 1)
-                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
-            end
-        end
-    end
-
-    
-    -- towers
-    love.graphics.setColor(0, 0, 1, 1)
-    for x=0, numBlocks-1 do
-        for y=0, numBlocks - 1 do
-            if map[x][y] == MAP_TOWER then
-                love.graphics.rectangle("fill", x * blockSize + lineSize, y * blockSize + lineSize, blockSize - lineSize * 2, blockSize - lineSize * 2)
-            end
-        end
-    end
-
-    
-    --]=====]
-
     -- bullets
     love.graphics.setColor(1, 0, 0, 1)
     love.graphics.setLineWidth(4)
@@ -532,38 +590,6 @@ function love.draw()
                 enemy = enemies[tower.enemyId]
                 if enemy.active then
                     love.graphics.line(quadToIsoX(tower.x, tower.y), quadToIsoY(tower.x, tower.y), quadToIsoX(enemy.x, enemy.y), quadToIsoY(enemy.x, enemy.y))
-                end
-            end
-        end
-    end
-
-    -- enemies
-    love.graphics.setColor(1, 1, 1, 1)
-    if gameState == GAME_STATE_RUNNING then
-        for i=0, numEnemies do
-            local enemy = enemies[i]
-            if enemy.active then
-                if enemy.type == ENEMY_TYPE_DUMB then
-                    love.graphics.setColor(0.7, 0.7, 1, 1)
-                elseif enemy.type == ENEMY_TYPE_PATHFINDER then
-                    love.graphics.setColor(0.9, 0.9, 0, 1)
-                elseif enemy.type == ENEMY_TYPE_FLY then
-                    love.graphics.setColor(0, 0, 0, 1)
-                end
-
-                local ix = quadToIsoX(enemy.x, enemy.y)
-                local iy = quadToIsoY(enemy.x, enemy.y)
-                love.graphics.circle("fill", ix, iy, 10)
-
-                if enemy.health < enemy.maxHealth then
-                    local healthPercent = enemy.health / enemy.maxHealth
-                    love.graphics.setColor(0.2, 0.2, 0.2, 1)
-                    love.graphics.setLineWidth(2)
-                    love.graphics.rectangle("line", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT)
-                    love.graphics.setColor(1, 1, 1, 1)
-                    love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * healthPercent, HEALTH_BAR_HEIGHT)
-                    love.graphics.setColor(1, 0, 0, 1)
-                    love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0 + HEALTH_BAR_WIDTH * healthPercent, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * (1.0 - healthPercent), HEALTH_BAR_HEIGHT)
                 end
             end
         end
