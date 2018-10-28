@@ -23,6 +23,7 @@ UPGRADE_RANGE="range"
 UPGRADE_RANGE_PRICE=100
 UPGRADE_POWER="power"
 UPGRADE_POWER_PRICE=200
+SELL_TOWER_PRICE=-50
 
 UPGRADE_RANGE_MULTIPIER=2
 UPGRADE_POWER_MULTIPLIER=1.7
@@ -30,7 +31,7 @@ BLOCK_STATUS_DURATION=10
 
 BLANK_PERCENTAGE=0.25
 
-TOWER_PRICE=80
+TOWER_PRICE=100
 CLEAR_TREE_PRICE=50
 BLOCK_PATH_PRICE=300
 
@@ -176,7 +177,7 @@ function resetEnemy()
     end
 
     if level > 3 then
-        trollChance = 0.03
+        trollChance = 0.01 * level
     end
 
     if money > 700 then
@@ -197,7 +198,7 @@ function resetEnemy()
 
     if math.random() < trollChance then
         enemy.type = ENEMY_TYPE_TROLL
-        enemy.speed = 5
+        enemy.speed = 8
         enemy.health = 200
         enemy.maxHealth = 200
         enemy.scoreKill = 50
@@ -209,8 +210,18 @@ function resetEnemy()
 
     if money < 0 then
         enemy.scoreKill = enemy.scoreKill * 2
+    elseif money > 2000 then
+        enemy.scoreKill = enemy.scoreKill / 3
     elseif money > 1000 then
-        enemy.scoreKill = enemy.scoreKill / 2
+        enemy.scoreKill = enemy.scoreKill / 3
+    end
+
+    if money < 0 then
+        enemy.scoreLose = enemy.scoreLose / 2
+    end
+    
+    if money < 100 then
+        enemy.scoreLose = enemy.scoreLose / 2
     end
 
     if level > 5 then
@@ -219,9 +230,16 @@ function resetEnemy()
         enemy.scoreLose = -100
     end
 
+    if level > 6 then
+        enemy.scoreKill = enemy.scoreKill / 2
+    end
+
     if enemy.type == ENEMY_TYPE_TROLL then
         enemy.scoreLose = -1000
     end
+    
+    enemy.scoreKill = math.floor(enemy.scoreKill)
+    enemy.scoreLose = math.floor(enemy.scoreLose)
 
     for j=0, numBlocks do
         enemy.visited[j] = {}
@@ -254,7 +272,7 @@ end
 function reset(newGame)
     if newGame then
         level = 1
-        money = 300
+        money = 500
     else
         level = level + 1
     end
@@ -491,7 +509,7 @@ function drawBlock(isPath, x, y, quadX, quadY, mapItems)
             if enemy.type == ENEMY_TYPE_FLY then
                 love.graphics.setColor(1, 1, 1, 1)
             elseif enemy.type == ENEMY_TYPE_TROLL then
-                size = 15
+                size = 14
             end
 
             love.graphics.setLineWidth(2)
@@ -626,7 +644,7 @@ function love.draw()
     if gameState == GAME_STATE_RUNNING then
         for i=0, numTowers - 1 do
             local tower = towers[i]
-            if tower.enemyId > -1 then
+            if tower.enemyId > -1 and not tower.disabled then
                 enemy = enemies[tower.enemyId]
                 if enemy.active then
                     if tower.damage > 10 then
@@ -688,7 +706,7 @@ function love.draw()
         elseif gameState == GAME_STATE_END then
             text = "You made it to level " .. level .. "! But ran out of money... Click to restart"
         elseif gameState == GAME_STATE_WAITING_TO_START then
-            text = "Click anywhere to start. Click on tiles to buy/upgrade towers, clear weeds, or block the path. Earn money by defeating enemies and lose money if they make it to their goal."
+            text = "Click anywhere to start. Click on tiles to buy/upgrade/sell towers, clear weeds, or block the path. Earn money by defeating enemies and lose money if they make it to their goal."
         end
 
         love.graphics.printf(text, screenWidth / 2 - 250, screenSize / 2 - 10, 500, 'center')
@@ -831,7 +849,7 @@ function love.mousepressed(x, y, button, istouch)
                 end
             }
         end
-
+--
         if not metadata[UPGRADE_POWER] then
             purchaseMenu.numItems = purchaseMenu.numItems + 1
             purchaseMenu.items[purchaseMenu.numItems] = {
@@ -843,6 +861,20 @@ function love.mousepressed(x, y, button, istouch)
                 end
             }
         end
+
+        purchaseMenu.numItems = purchaseMenu.numItems + 1
+            purchaseMenu.items[purchaseMenu.numItems] = {
+                title = "Sell Tower",
+                price = SELL_TOWER_PRICE,
+                action = function (x, y)
+                    map[x][y] = MAP_BLANK
+                    mapMetadata[x][y][UPGRADE_SPEED] = false
+                    mapMetadata[x][y][UPGRADE_RANGE] = false
+                    mapMetadata[x][y][UPGRADE_POWER] = false
+                    mapMetadata[x][y].tower.disabled = true
+                    mapMetadata[x][y].tower = nil
+                end
+            }
 
     elseif type == MAP_TREE then
         purchaseMenu.numItems = 1
@@ -972,6 +1004,10 @@ end
 
 
 function updateTower(dt, tower)
+    if tower.disabled then
+        return
+    end
+
     tower.timeRemaining = tower.timeRemaining - dt
 
     if tower.state == TOWER_WAITING then
