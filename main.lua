@@ -415,6 +415,14 @@ function drawBlock(isPath, x, y, quadX, quadY, mapItems)
         love.graphics.setColor(1, 1, 1, 1)
     end
 
+    if x == lastX and y == lastY then
+        love.graphics.setColor(1, 169/256.0, 0.3, 1)
+    end
+
+    if x == 0 and y == math.floor(numBlocks / 2) then
+        love.graphics.setColor(0.6, 0.6, 1, 1)
+    end
+
     local image = imageGrass
     local extraY = -QUAD_HEIGHT / 8
     --extraY = 0
@@ -456,6 +464,18 @@ function drawBlock(isPath, x, y, quadX, quadY, mapItems)
         local item = items.items[i]
         if item.enemy then
             local enemy = item.enemy
+
+            local ix = quadToIsoX(enemy.x, enemy.y)
+            local iy = quadToIsoY(enemy.x, enemy.y)
+
+            love.graphics.setColor(0, 0, 0, 1)
+            if enemy.type == ENEMY_TYPE_FLY then
+                love.graphics.setColor(1, 1, 1, 1)
+            end
+
+            love.graphics.setLineWidth(2)
+            love.graphics.circle("line", ix, iy, 10)
+
             if enemy.type == ENEMY_TYPE_DUMB then
                 love.graphics.setColor(0.7, 0.7, 1, 1)
             elseif enemy.type == ENEMY_TYPE_PATHFINDER then
@@ -464,10 +484,8 @@ function drawBlock(isPath, x, y, quadX, quadY, mapItems)
                 love.graphics.setColor(0, 0, 0, 1)
             end
 
-            local ix = quadToIsoX(enemy.x, enemy.y)
-            local iy = quadToIsoY(enemy.x, enemy.y)
             love.graphics.circle("fill", ix, iy, 10)
-
+    
             if enemy.health < enemy.maxHealth then
                 local healthPercent = enemy.health / enemy.maxHealth
                 love.graphics.setColor(0.2, 0.2, 0.2, 1)
@@ -485,8 +503,8 @@ end
 function love.draw()
     love.graphics.setFont(font)
     love.graphics.push()
-    love.graphics.clear(0.529, 0.808, 0.98, 1)
-    love.graphics.setColor(0, 0, 0, 1)
+    love.graphics.clear(0, 0, 0, 1)
+    love.graphics.setColor(1, 1, 1, 1)
     
     if gameState == GAME_STATE_RUNNING then
         if time > 0 then
@@ -581,7 +599,7 @@ function love.draw()
     end
 
     -- bullets
-    love.graphics.setColor(1, 0, 0, 1)
+    love.graphics.setColor(1, 0, 0, 0.5)
     love.graphics.setLineWidth(4)
     if gameState == GAME_STATE_RUNNING then
         for i=0, numTowers - 1 do
@@ -589,7 +607,7 @@ function love.draw()
             if tower.enemyId > -1 then
                 enemy = enemies[tower.enemyId]
                 if enemy.active then
-                    love.graphics.line(quadToIsoX(tower.x, tower.y), quadToIsoY(tower.x, tower.y), quadToIsoX(enemy.x, enemy.y), quadToIsoY(enemy.x, enemy.y))
+                    love.graphics.line(quadToIsoX(tower.x, tower.y), quadToIsoY(tower.x, tower.y) - QUAD_HEIGHT * 0.5, quadToIsoX(enemy.x, enemy.y), quadToIsoY(enemy.x, enemy.y))
                 end
             end
         end
@@ -625,16 +643,16 @@ function love.draw()
         love.graphics.setColor(0, 0, 0, 1)
         love.graphics.setFont(menuFont)
         for i=0, purchaseMenu.numItems - 1 do
-            love.graphics.print(purchaseMenu.items[i + 1].title .. "($" .. purchaseMenu.items[i + 1].price .. ")", purchaseMenu.x + 10, purchaseMenu.y + (i + 0.5) * PURCHASE_MENU_ROW_HEIGHT - PURCHASE_MENU_FONT_SIZE / 2)
+            love.graphics.print(purchaseMenu.items[i + 1].title .. " ($" .. purchaseMenu.items[i + 1].price .. ")", purchaseMenu.x + 10, purchaseMenu.y + (i + 0.5) * PURCHASE_MENU_ROW_HEIGHT - PURCHASE_MENU_FONT_SIZE / 2)
         end
     end
 
     -- overlay
     if gameState ~= GAME_STATE_RUNNING then
-        love.graphics.setColor(1, 1, 1, 0.7)
+        love.graphics.setColor(0.3, 0.3, 0.3, 0.7)
         love.graphics.rectangle("fill", 0, 0, screenWidth, screenSize + textHeight)
 
-        love.graphics.setColor(0, 0, 0, 1)
+        love.graphics.setColor(1, 1, 1, 1)
         love.graphics.setFont(font)
         text = ""
         if gameState == GAME_STATE_BETWEEN_ROUNDS then
@@ -802,7 +820,7 @@ function love.mousepressed(x, y, button, istouch)
         purchaseMenu.numItems = 1
         purchaseMenu.items = {
             {
-                title = "Clear Tree",
+                title = "Clear Weeds",
                 price = CLEAR_TREE_PRICE,
                 action = function (x, y) map[x][y] = MAP_BLANK end
             }
