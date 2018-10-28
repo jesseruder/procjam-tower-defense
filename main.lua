@@ -53,6 +53,7 @@ PURCHASE_MENU_CANCEL_DIST = 200
 ENEMY_TYPE_DUMB="dumb"
 ENEMY_TYPE_PATHFINDER="pathfinder"
 ENEMY_TYPE_FLY="fly"
+ENEMY_TYPE_TROLL="troll"
 
 ENEMY_SPAWN_RATE=0.014
 
@@ -77,7 +78,7 @@ function love.load()
     lineSize = 3
     numEnemies = 50
     gameState = GAME_STATE_WAITING_TO_START
-    font = love.graphics.newFont(14)
+    font = love.graphics.newFont(18)
     menuFont = love.graphics.newFont(12)
 
     -- isometric
@@ -147,6 +148,8 @@ function resetEnemy()
     }
 
     local pathfinderChance = 0
+    local flyChance = 0
+    local trollChance = 0
     if level > 3 then
         flyChance = 0.05
     end
@@ -168,9 +171,12 @@ function resetEnemy()
         enemy.maxHealth = 7
     end
 
-    local flyChance = 0
-    if level > 4 then
+    if level > 2 then
         flyChance = 0.04
+    end
+
+    if level > 3 then
+        trollChance = 0.03
     end
 
     if money > 700 then
@@ -189,6 +195,14 @@ function resetEnemy()
         enemy.scoreKill = 50
     end
 
+    if math.random() < trollChance then
+        enemy.type = ENEMY_TYPE_TROLL
+        enemy.speed = 5
+        enemy.health = 200
+        enemy.maxHealth = 200
+        enemy.scoreKill = 50
+    end
+
     enemy.speed = enemy.speed + math.random() * (8 + level)
     enemy.health = enemy.health + level
     enemy.maxHealth = enemy.health
@@ -203,6 +217,10 @@ function resetEnemy()
         enemy.scoreLose = -200
     elseif level > 3 then
         enemy.scoreLose = -100
+    end
+
+    if enemy.type == ENEMY_TYPE_TROLL then
+        enemy.scoreLose = -1000
     end
 
     for j=0, numBlocks do
@@ -467,14 +485,17 @@ function drawBlock(isPath, x, y, quadX, quadY, mapItems)
 
             local ix = quadToIsoX(enemy.x, enemy.y)
             local iy = quadToIsoY(enemy.x, enemy.y)
+            local size = 10
 
             love.graphics.setColor(0, 0, 0, 1)
             if enemy.type == ENEMY_TYPE_FLY then
                 love.graphics.setColor(1, 1, 1, 1)
+            elseif enemy.type == ENEMY_TYPE_TROLL then
+                size = 15
             end
 
             love.graphics.setLineWidth(2)
-            love.graphics.circle("line", ix, iy, 10)
+            love.graphics.circle("line", ix, iy, size)
 
             if enemy.type == ENEMY_TYPE_DUMB then
                 love.graphics.setColor(0.7, 0.7, 1, 1)
@@ -482,18 +503,20 @@ function drawBlock(isPath, x, y, quadX, quadY, mapItems)
                 love.graphics.setColor(0.9, 0.9, 0, 1)
             elseif enemy.type == ENEMY_TYPE_FLY then
                 love.graphics.setColor(0, 0, 0, 1)
+            elseif enemy.type == ENEMY_TYPE_TROLL then
+                love.graphics.setColor(1, 1, 1, 1)
             end
 
-            love.graphics.circle("fill", ix, iy, 10)
+            love.graphics.circle("fill", ix, iy, size)
     
             if enemy.health < enemy.maxHealth then
                 local healthPercent = enemy.health / enemy.maxHealth
                 love.graphics.setColor(0.2, 0.2, 0.2, 1)
                 love.graphics.setLineWidth(2)
                 love.graphics.rectangle("line", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT)
-                love.graphics.setColor(1, 1, 1, 1)
-                love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * healthPercent, HEALTH_BAR_HEIGHT)
                 love.graphics.setColor(1, 0, 0, 1)
+                love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * healthPercent, HEALTH_BAR_HEIGHT)
+                love.graphics.setColor(1, 1, 1, 1)
                 love.graphics.rectangle("fill", ix - HEALTH_BAR_WIDTH / 2.0 + HEALTH_BAR_WIDTH * healthPercent, iy + HEALTH_BAR_Y, HEALTH_BAR_WIDTH * (1.0 - healthPercent), HEALTH_BAR_HEIGHT)
             end
         end
@@ -600,13 +623,18 @@ function love.draw()
 
     -- bullets
     love.graphics.setColor(1, 0, 0, 0.5)
-    love.graphics.setLineWidth(4)
     if gameState == GAME_STATE_RUNNING then
         for i=0, numTowers - 1 do
             local tower = towers[i]
             if tower.enemyId > -1 then
                 enemy = enemies[tower.enemyId]
                 if enemy.active then
+                    if tower.damage > 10 then
+                        love.graphics.setLineWidth(8)
+                    else
+                        love.graphics.setLineWidth(4)
+                    end
+
                     love.graphics.line(quadToIsoX(tower.x, tower.y), quadToIsoY(tower.x, tower.y) - QUAD_HEIGHT * 0.5, quadToIsoX(enemy.x, enemy.y), quadToIsoY(enemy.x, enemy.y))
                 end
             end
@@ -660,10 +688,10 @@ function love.draw()
         elseif gameState == GAME_STATE_END then
             text = "You made it to level " .. level .. "! But ran out of money... Click to restart"
         elseif gameState == GAME_STATE_WAITING_TO_START then
-            text = "Click anywhere to start! Click on tiles to purchase upgrades"
+            text = "Click anywhere to start. Click on tiles to buy/upgrade towers, clear weeds, or block the path. Earn money by defeating enemies and lose money if they make it to their goal."
         end
 
-        love.graphics.print(text, screenWidth / 2 - 200, screenSize / 2 - 10)
+        love.graphics.printf(text, screenWidth / 2 - 250, screenSize / 2 - 10, 500, 'center')
     end
 end
 
@@ -877,7 +905,7 @@ function love.update(dt)
         if enemy.active then
             if enemy.type == ENEMY_TYPE_DUMB then
                 enemyMove(dt, enemy)
-            elseif enemy.type == ENEMY_TYPE_PATHFINDER then
+            elseif enemy.type == ENEMY_TYPE_PATHFINDER or enemy.type == ENEMY_TYPE_TROLL then
                 enemyMovePathfinder(dt, enemy)
             elseif enemy.type == ENEMY_TYPE_FLY then
                 enemyMoveFly(dt, enemy)
