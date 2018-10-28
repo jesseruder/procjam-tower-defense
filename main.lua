@@ -9,7 +9,7 @@ MAP_TREE_TYPES=2
 QUAD_WIDTH=111
 QUAD_HEIGHT=128
 TALL_QUAD_HEIGHT=200
-TOWER_QUAD_HEIGHT=270
+TOWER_QUAD_HEIGHT=256
 
 -- even number plz
 NUM_BLOCKS=10
@@ -62,7 +62,7 @@ function love.load()
     imageGrass = love.graphics.newImage("grass.png")
     imageTree = love.graphics.newImage("weeds.png")
     imageTree2 = love.graphics.newImage("weeds2.png")
-    imageTower = love.graphics.newImage("gnome.png")
+    imageTower = love.graphics.newImage("tower.png")
     quad = love.graphics.newQuad(0, 0, QUAD_WIDTH, QUAD_HEIGHT, imageDirt:getWidth(), imageDirt:getHeight())
     tallQuad = love.graphics.newQuad(0, 0, QUAD_WIDTH, TALL_QUAD_HEIGHT, imageTree:getWidth(), imageTree:getHeight())
     towerQuad = love.graphics.newQuad(0, 0, QUAD_WIDTH, TOWER_QUAD_HEIGHT, imageTower:getWidth(), imageTower:getHeight())
@@ -417,7 +417,7 @@ function drawBlock(isPath, x, y, quadX, quadY, mapItems)
 
     local image = imageGrass
     local extraY = -QUAD_HEIGHT / 8
-    extraY = 0
+    --extraY = 0
     if map[x][y] == MAP_PATH or map[x][y] == MAP_BLOCKED_PATH then
         image = imageDirt
         extraY = 0
