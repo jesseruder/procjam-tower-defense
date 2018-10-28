@@ -849,7 +849,7 @@ function love.mousepressed(x, y, button, istouch)
                 end
             }
         end
---
+
         if not metadata[UPGRADE_POWER] then
             purchaseMenu.numItems = purchaseMenu.numItems + 1
             purchaseMenu.items[purchaseMenu.numItems] = {
